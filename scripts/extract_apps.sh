@@ -24,6 +24,10 @@ case "$COMPRESSION_LEVEL" in
   *) XZ_FLAGS="-0" ;;
 esac
 
+# Define targets
+APP_TARGETS="app/SketchBook"
+FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
+
 echo ""; echo "[1/6] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
 ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
@@ -79,12 +83,14 @@ fi
 [ -z "$SYSTEM_IMG" ] || [ ! -f "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
 
 echo ""; echo "[5/6] Extracting system.img..."
-mkdir -p system_extracted output
+mkdir -p system_extracted output/Apps/system
 
 if tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
   echo "  ✅ Extracted via erofs"
 else
   echo "  erofs failed - trying debugfs..."
+  
+  # Extract app folders
   for TARGET in "app/SketchBook" "system/app/SketchBook"; do
     if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
       mkdir -p "system_extracted/app/SketchBook"
@@ -92,9 +98,22 @@ else
       break
     fi
   done
+  
+  # Extract framework JARs
+  for JAR in $FRAMEWORK_JARS; do
+    for SRC in "framework/$JAR" "system/framework/$JAR"; do
+      if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
+        mkdir -p "system_extracted/framework"
+        debugfs -R "dump $SRC system_extracted/framework/$JAR" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
 fi
 
-echo ""; echo "[6/6] Copying SketchBook..."
+echo ""; echo "[6/6] Copying targets..."
+
+# Copy SketchBook to Apps/system/app/
 FOUND=false
 for BASE in \
   "system_extracted/app/SketchBook" \
@@ -103,19 +122,34 @@ for BASE in \
   "system_extracted/system/system/app/SketchBook" \
   "system_extracted/system_a/system/app/SketchBook"; do
   if [ -d "$BASE" ]; then
-    mkdir -p "output/Apps"
-    cp -r "$BASE" "output/Apps/SketchBook"
-    echo "    ✓ SketchBook"
+    mkdir -p "output/Apps/system/app"
+    cp -r "$BASE" "output/Apps/system/app/SketchBook"
+    echo "    ✓ app/SketchBook"
     FOUND=true
     break
   fi
 done
+$FOUND || echo "  ❌ SketchBook not found"
 
-if ! $FOUND; then
-  echo "  ❌ SketchBook folder not found!"
-  rm -rf system_extracted super_dump *.img
-  exit 1
-fi
+# Copy framework JARs to Apps/system/framework/
+mkdir -p "output/Apps/system/framework"
+for JAR in $FRAMEWORK_JARS; do
+  JAR_FOUND=false
+  for BASE in \
+    "system_extracted/framework/$JAR" \
+    "system_extracted/system/framework/$JAR" \
+    "system_extracted/system_a/framework/$JAR" \
+    "system_extracted/system/system/framework/$JAR" \
+    "system_extracted/system_a/system/framework/$JAR"; do
+    if [ -f "$BASE" ]; then
+      cp "$BASE" "output/Apps/system/framework/$JAR"
+      echo "    ✓ framework/$JAR"
+      JAR_FOUND=true
+      break
+    fi
+  done
+  $JAR_FOUND || echo "  ❌ $JAR not found"
+done
 
 rm -rf system_extracted super_dump *.img
 
