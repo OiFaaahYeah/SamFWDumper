@@ -25,7 +25,9 @@ case "$COMPRESSION_LEVEL" in
 esac
 
 # Define targets
-APP_TARGETS="app/SketchBook"
+APP_FOLDERS="SketchBook"
+PRIVAPP_FOLDERS="BixbyInterpreter SamsungGallery2018"
+ETC_FOLDERS="ailasso ailassomatting inpainting objectremoval reflectionremoval shadowremoval style_transfer"
 FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
 
 echo ""; echo "[1/6] Downloading..."
@@ -91,12 +93,36 @@ else
   echo "  erofs failed - trying debugfs..."
   
   # Extract app folders
-  for TARGET in "app/SketchBook" "system/app/SketchBook"; do
-    if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
-      mkdir -p "system_extracted/app/SketchBook"
-      debugfs -R "rdump $TARGET system_extracted/app/SketchBook" "$SYSTEM_IMG" 2>/dev/null
-      break
-    fi
+  for FOLDER in $APP_FOLDERS; do
+    for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
+      if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+        mkdir -p "system_extracted/app/$FOLDER"
+        debugfs -R "rdump $TARGET system_extracted/app/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
+  
+  # Extract priv-app folders
+  for FOLDER in $PRIVAPP_FOLDERS; do
+    for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
+      if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+        mkdir -p "system_extracted/priv-app/$FOLDER"
+        debugfs -R "rdump $TARGET system_extracted/priv-app/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
+  
+  # Extract etc folders
+  for FOLDER in $ETC_FOLDERS; do
+    for TARGET in "etc/$FOLDER" "system/etc/$FOLDER"; do
+      if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+        mkdir -p "system_extracted/etc/$FOLDER"
+        debugfs -R "rdump $TARGET system_extracted/etc/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
   done
   
   # Extract framework JARs
@@ -113,23 +139,65 @@ fi
 
 echo ""; echo "[6/6] Copying targets..."
 
-# Copy SketchBook to Apps/system/app/
-FOUND=false
-for BASE in \
-  "system_extracted/app/SketchBook" \
-  "system_extracted/system/app/SketchBook" \
-  "system_extracted/system_a/app/SketchBook" \
-  "system_extracted/system/system/app/SketchBook" \
-  "system_extracted/system_a/system/app/SketchBook"; do
-  if [ -d "$BASE" ]; then
-    mkdir -p "output/Apps/system/app"
-    cp -r "$BASE" "output/Apps/system/app/SketchBook"
-    echo "    ✓ app/SketchBook"
-    FOUND=true
-    break
-  fi
+# Copy app folders to Apps/system/app/
+for FOLDER in $APP_FOLDERS; do
+  FOUND=false
+  for BASE in \
+    "system_extracted/app/$FOLDER" \
+    "system_extracted/system/app/$FOLDER" \
+    "system_extracted/system_a/app/$FOLDER" \
+    "system_extracted/system/system/app/$FOLDER" \
+    "system_extracted/system_a/system/app/$FOLDER"; do
+    if [ -d "$BASE" ]; then
+      mkdir -p "output/Apps/system/app"
+      cp -r "$BASE" "output/Apps/system/app/$FOLDER"
+      echo "    ✓ app/$FOLDER"
+      FOUND=true
+      break
+    fi
+  done
+  $FOUND || echo "  ❌ $FOLDER not found"
 done
-$FOUND || echo "  ❌ SketchBook not found"
+
+# Copy priv-app folders to Apps/system/priv-app/
+for FOLDER in $PRIVAPP_FOLDERS; do
+  FOUND=false
+  for BASE in \
+    "system_extracted/priv-app/$FOLDER" \
+    "system_extracted/system/priv-app/$FOLDER" \
+    "system_extracted/system_a/priv-app/$FOLDER" \
+    "system_extracted/system/system/priv-app/$FOLDER" \
+    "system_extracted/system_a/system/priv-app/$FOLDER"; do
+    if [ -d "$BASE" ]; then
+      mkdir -p "output/Apps/system/priv-app"
+      cp -r "$BASE" "output/Apps/system/priv-app/$FOLDER"
+      echo "    ✓ priv-app/$FOLDER"
+      FOUND=true
+      break
+    fi
+  done
+  $FOUND || echo "  ❌ $FOLDER not found"
+done
+
+# Copy etc folders to Apps/system/etc/
+for FOLDER in $ETC_FOLDERS; do
+  FOUND=false
+  for BASE in \
+    "system_extracted/etc/$FOLDER" \
+    "system_extracted/system/etc/$FOLDER" \
+    "system_extracted/system_a/etc/$FOLDER" \
+    "system_extracted/system/system/etc/$FOLDER" \
+    "system_extracted/system_a/system/etc/$FOLDER"; do
+    if [ -d "$BASE" ]; then
+      mkdir -p "output/Apps/system/etc"
+      cp -r "$BASE" "output/Apps/system/etc/$FOLDER"
+      echo "    ✓ etc/$FOLDER"
+      FOUND=true
+      break
+    fi
+  done
+  $FOUND || echo "  ❌ $FOLDER not found"
+done
 
 # Copy framework JARs to Apps/system/framework/
 mkdir -p "output/Apps/system/framework"
