@@ -28,6 +28,7 @@ esac
 APP_FOLDERS="SketchBook"
 PRIVAPP_FOLDERS="BixbyInterpreter SamsungGallery2018"
 ETC_FOLDERS="ailasso ailassomatting inpainting objectremoval reflectionremoval shadowremoval style_transfer"
+MEDIA_FILES="bootsamsung.qmg bootsamsungloop.qmg shutdown.qmg"
 FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
 
 echo ""; echo "[1/6] Downloading..."
@@ -125,6 +126,17 @@ else
     done
   done
   
+  # Extract media files
+  for FILE in $MEDIA_FILES; do
+    for SRC in "media/$FILE" "system/media/$FILE"; do
+      if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
+        mkdir -p "system_extracted/media"
+        debugfs -R "dump $SRC system_extracted/media/$FILE" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
+  
   # Extract framework JARs
   for JAR in $FRAMEWORK_JARS; do
     for SRC in "framework/$JAR" "system/framework/$JAR"; do
@@ -197,6 +209,26 @@ for FOLDER in $ETC_FOLDERS; do
     fi
   done
   $FOUND || echo "  ❌ $FOLDER not found"
+done
+
+# Copy media files to Apps/system/media/
+mkdir -p "output/Apps/system/media"
+for FILE in $MEDIA_FILES; do
+  FILE_FOUND=false
+  for BASE in \
+    "system_extracted/media/$FILE" \
+    "system_extracted/system/media/$FILE" \
+    "system_extracted/system_a/media/$FILE" \
+    "system_extracted/system/system/media/$FILE" \
+    "system_extracted/system_a/system/media/$FILE"; do
+    if [ -f "$BASE" ]; then
+      cp "$BASE" "output/Apps/system/media/$FILE"
+      echo "    ✓ media/$FILE"
+      FILE_FOUND=true
+      break
+    fi
+  done
+  $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
 # Copy framework JARs to Apps/system/framework/
