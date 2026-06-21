@@ -142,8 +142,8 @@ extract_f2fs() {
       mkdir -p "$DEST"
       for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
         if sudo test -d "$SRC_PATH" 2>/dev/null; then
-          sudo cp -r "$SRC_PATH"/* "$DEST/" 2>/dev/null
-          sudo chown -R $(id -u):$(id -g) "$DEST"
+          sudo cp -r "$SRC_PATH" "$DEST/" 2>/dev/null
+          sudo chown -R $(id -u):$(id -g) "$DEST/$(basename "$TARGET")"
           FOUND=true; break
         fi
       done
