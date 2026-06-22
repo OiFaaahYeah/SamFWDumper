@@ -1,1 +1,5 @@
-
+BixbyInterpreter
+SamsungGallery2018
+PhotoEditor_AIFull
+Bixby
+SamsungSmartSuggestions
