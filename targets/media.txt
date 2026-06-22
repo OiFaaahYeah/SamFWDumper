@@ -1,0 +1,3 @@
+bootsamsung.qmg
+bootsamsungloop.qmg
+shutdown.qmg
