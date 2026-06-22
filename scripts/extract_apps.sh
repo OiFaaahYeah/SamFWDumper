@@ -32,6 +32,35 @@ MEDIA_FILES="bootsamsung.qmg bootsamsungloop.qmg shutdown.qmg"
 LIB64_FILES="libobjectcapture.arcsoft.so libobjectcapture_jni.arcsoft.so"
 FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
 
+# Helper: get human-readable size (M or K)
+get_size() {
+  local BYTES
+  if [ -f "$1" ]; then
+    BYTES=$(stat -c%s "$1" 2>/dev/null)
+  elif [ -d "$1" ]; then
+    BYTES=$(du -sb "$1" 2>/dev/null | cut -f1)
+  else
+    echo "?"
+    return
+  fi
+  if [ -z "$BYTES" ]; then
+    echo "?"
+  elif [ "$BYTES" -ge 1048576 ]; then
+    echo "$(( (BYTES + 524288) / 1048576 ))M"
+  else
+    echo "$(( (BYTES + 512) / 1024 ))K"
+  fi
+}
+
+# Helper: check if item is in a space-separated list
+is_target() {
+  local item="$1" list="$2"
+  for i in $list; do
+    [ "$i" = "$item" ] && return 0
+  done
+  return 1
+}
+
 echo ""; echo "[1/6] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
 ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
@@ -93,7 +122,7 @@ if tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/de
   echo "  ✅ Extracted via erofs"
 else
   echo "  erofs failed - trying debugfs..."
-  
+
   # Extract app folders
   for FOLDER in $APP_FOLDERS; do
     for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
@@ -104,7 +133,7 @@ else
       fi
     done
   done
-  
+
   # Extract priv-app folders
   for FOLDER in $PRIVAPP_FOLDERS; do
     for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
@@ -115,7 +144,7 @@ else
       fi
     done
   done
-  
+
   # Extract etc folders
   for FOLDER in $ETC_FOLDERS; do
     for TARGET in "etc/$FOLDER" "system/etc/$FOLDER"; do
@@ -126,7 +155,7 @@ else
       fi
     done
   done
-  
+
   # Extract media files
   for FILE in $MEDIA_FILES; do
     for SRC in "media/$FILE" "system/media/$FILE"; do
@@ -137,7 +166,7 @@ else
       fi
     done
   done
-  
+
   # Extract lib64 files
   for FILE in $LIB64_FILES; do
     for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
@@ -148,7 +177,7 @@ else
       fi
     done
   done
-  
+
   # Extract framework JARs
   for JAR in $FRAMEWORK_JARS; do
     for SRC in "framework/$JAR" "system/framework/$JAR"; do
@@ -161,127 +190,155 @@ else
   done
 fi
 
-echo ""; echo "[6/6] Copying targets..."
+echo ""; echo "[6/6] Dumping system contents..."
 
-# Copy app folders to Apps/system/app/
-for FOLDER in $APP_FOLDERS; do
-  FOUND=false
-  for BASE in \
-    "system_extracted/app/$FOLDER" \
-    "system_extracted/system/app/$FOLDER" \
-    "system_extracted/system_a/app/$FOLDER" \
-    "system_extracted/system/system/app/$FOLDER" \
-    "system_extracted/system_a/system/app/$FOLDER"; do
-    if [ -d "$BASE" ]; then
+# Find the extracted root
+ROOT_DIR=""
+for D in "system_extracted/system" "system_extracted/system_a" "system_extracted"; do
+  if [ -d "$D/app" ] || [ -d "$D/framework" ]; then
+    ROOT_DIR="$D"
+    break
+  fi
+done
+[ -z "$ROOT_DIR" ] && ROOT_DIR="system_extracted"
+
+# ─── app/ ───
+echo ""
+echo "--- system/app ---"
+if [ -d "$ROOT_DIR/app" ]; then
+  for ITEM in "$ROOT_DIR/app/"*/; do
+    [ -d "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    SIZE=$(get_size "$ITEM")
+    if is_target "$NAME" "$APP_FOLDERS"; then
+      printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
       mkdir -p "output/Apps/system/app"
-      cp -r "$BASE" "output/Apps/system/app/$FOLDER"
-      echo "    ✓ app/$FOLDER"
-      FOUND=true
-      break
+      cp -r "$ITEM" "output/Apps/system/app/$NAME"
+    else
+      printf "      %-40s %8s\n" "$NAME" "$SIZE"
     fi
   done
-  $FOUND || echo "  ❌ $FOLDER not found"
-done
+else
+  echo "    (empty or not found)"
+fi
 
-# Copy priv-app folders to Apps/system/priv-app/
-for FOLDER in $PRIVAPP_FOLDERS; do
-  FOUND=false
-  for BASE in \
-    "system_extracted/priv-app/$FOLDER" \
-    "system_extracted/system/priv-app/$FOLDER" \
-    "system_extracted/system_a/priv-app/$FOLDER" \
-    "system_extracted/system/system/priv-app/$FOLDER" \
-    "system_extracted/system_a/system/priv-app/$FOLDER"; do
-    if [ -d "$BASE" ]; then
+# ─── priv-app/ ───
+echo ""
+echo "--- system/priv-app ---"
+if [ -d "$ROOT_DIR/priv-app" ]; then
+  for ITEM in "$ROOT_DIR/priv-app/"*/; do
+    [ -d "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    SIZE=$(get_size "$ITEM")
+    if is_target "$NAME" "$PRIVAPP_FOLDERS"; then
+      printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
       mkdir -p "output/Apps/system/priv-app"
-      cp -r "$BASE" "output/Apps/system/priv-app/$FOLDER"
-      echo "    ✓ priv-app/$FOLDER"
-      FOUND=true
-      break
+      cp -r "$ITEM" "output/Apps/system/priv-app/$NAME"
+    else
+      printf "      %-40s %8s\n" "$NAME" "$SIZE"
     fi
   done
-  $FOUND || echo "  ❌ $FOLDER not found"
-done
+else
+  echo "    (empty or not found)"
+fi
 
-# Copy etc folders to Apps/system/etc/
-for FOLDER in $ETC_FOLDERS; do
-  FOUND=false
-  for BASE in \
-    "system_extracted/etc/$FOLDER" \
-    "system_extracted/system/etc/$FOLDER" \
-    "system_extracted/system_a/etc/$FOLDER" \
-    "system_extracted/system/system/etc/$FOLDER" \
-    "system_extracted/system_a/system/etc/$FOLDER"; do
-    if [ -d "$BASE" ]; then
+# ─── etc/ ───
+echo ""
+echo "--- system/etc ---"
+if [ -d "$ROOT_DIR/etc" ]; then
+  for ITEM in "$ROOT_DIR/etc/"*/; do
+    [ -d "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    SIZE=$(get_size "$ITEM")
+    if is_target "$NAME" "$ETC_FOLDERS"; then
+      printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
       mkdir -p "output/Apps/system/etc"
-      cp -r "$BASE" "output/Apps/system/etc/$FOLDER"
-      echo "    ✓ etc/$FOLDER"
-      FOUND=true
-      break
+      cp -r "$ITEM" "output/Apps/system/etc/$NAME"
+    else
+      printf "      %-40s %8s\n" "$NAME" "$SIZE"
     fi
   done
-  $FOUND || echo "  ❌ $FOLDER not found"
-done
+  for ITEM in "$ROOT_DIR/etc/"*; do
+    [ -f "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    SIZE=$(get_size "$ITEM")
+    if is_target "$NAME" "$ETC_FOLDERS"; then
+      printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
+      mkdir -p "output/Apps/system/etc"
+      cp "$ITEM" "output/Apps/system/etc/$NAME"
+    else
+      printf "      %-40s %8s\n" "$NAME" "$SIZE"
+    fi
+  done
+else
+  echo "    (empty or not found)"
+fi
 
-# Copy media files to Apps/system/media/
-mkdir -p "output/Apps/system/media"
-for FILE in $MEDIA_FILES; do
-  FILE_FOUND=false
-  for BASE in \
-    "system_extracted/media/$FILE" \
-    "system_extracted/system/media/$FILE" \
-    "system_extracted/system_a/media/$FILE" \
-    "system_extracted/system/system/media/$FILE" \
-    "system_extracted/system_a/system/media/$FILE"; do
-    if [ -f "$BASE" ]; then
-      cp "$BASE" "output/Apps/system/media/$FILE"
-      echo "    ✓ media/$FILE"
-      FILE_FOUND=true
-      break
+# ─── media/ ───
+echo ""
+echo "--- system/media ---"
+if [ -d "$ROOT_DIR/media" ]; then
+  for ITEM in "$ROOT_DIR/media/"*; do
+    [ -e "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    if [ -f "$ITEM" ]; then
+      SIZE=$(get_size "$ITEM")
+      if is_target "$NAME" "$MEDIA_FILES"; then
+        printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
+        mkdir -p "output/Apps/system/media"
+        cp "$ITEM" "output/Apps/system/media/$NAME"
+      else
+        printf "      %-40s %8s\n" "$NAME" "$SIZE"
+      fi
     fi
   done
-  $FILE_FOUND || echo "  ❌ $FILE not found"
-done
+else
+  echo "    (empty or not found)"
+fi
 
-# Copy lib64 files to Apps/system/lib64/
-mkdir -p "output/Apps/system/lib64"
-for FILE in $LIB64_FILES; do
-  FILE_FOUND=false
-  for BASE in \
-    "system_extracted/lib64/$FILE" \
-    "system_extracted/system/lib64/$FILE" \
-    "system_extracted/system_a/lib64/$FILE" \
-    "system_extracted/system/system/lib64/$FILE" \
-    "system_extracted/system_a/system/lib64/$FILE"; do
-    if [ -f "$BASE" ]; then
-      cp "$BASE" "output/Apps/system/lib64/$FILE"
-      echo "    ✓ lib64/$FILE"
-      FILE_FOUND=true
-      break
+# ─── lib64/ ───
+echo ""
+echo "--- system/lib64 ---"
+if [ -d "$ROOT_DIR/lib64" ]; then
+  for ITEM in "$ROOT_DIR/lib64/"*; do
+    [ -e "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    if [ -f "$ITEM" ]; then
+      SIZE=$(get_size "$ITEM")
+      if is_target "$NAME" "$LIB64_FILES"; then
+        printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
+        mkdir -p "output/Apps/system/lib64"
+        cp "$ITEM" "output/Apps/system/lib64/$NAME"
+      else
+        printf "      %-40s %8s\n" "$NAME" "$SIZE"
+      fi
     fi
   done
-  $FILE_FOUND || echo "  ❌ $FILE not found"
-done
+else
+  echo "    (empty or not found)"
+fi
 
-# Copy framework JARs to Apps/system/framework/
-mkdir -p "output/Apps/system/framework"
-for JAR in $FRAMEWORK_JARS; do
-  JAR_FOUND=false
-  for BASE in \
-    "system_extracted/framework/$JAR" \
-    "system_extracted/system/framework/$JAR" \
-    "system_extracted/system_a/framework/$JAR" \
-    "system_extracted/system/system/framework/$JAR" \
-    "system_extracted/system_a/system/framework/$JAR"; do
-    if [ -f "$BASE" ]; then
-      cp "$BASE" "output/Apps/system/framework/$JAR"
-      echo "    ✓ framework/$JAR"
-      JAR_FOUND=true
-      break
+# ─── framework/ ───
+echo ""
+echo "--- system/framework ---"
+if [ -d "$ROOT_DIR/framework" ]; then
+  for ITEM in "$ROOT_DIR/framework/"*; do
+    [ -e "$ITEM" ] || continue
+    NAME=$(basename "$ITEM")
+    if [ -f "$ITEM" ]; then
+      SIZE=$(get_size "$ITEM")
+      if is_target "$NAME" "$FRAMEWORK_JARS"; then
+        printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
+        mkdir -p "output/Apps/system/framework"
+        cp "$ITEM" "output/Apps/system/framework/$NAME"
+      else
+        printf "      %-40s %8s\n" "$NAME" "$SIZE"
+      fi
     fi
   done
-  $JAR_FOUND || echo "  ❌ $JAR not found"
-done
+else
+  echo "    (empty or not found)"
+fi
 
 rm -rf system_extracted super_dump *.img
 
