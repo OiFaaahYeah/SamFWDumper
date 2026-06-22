@@ -32,35 +32,6 @@ MEDIA_FILES="bootsamsung.qmg bootsamsungloop.qmg shutdown.qmg"
 LIB64_FILES="libobjectcapture.arcsoft.so libobjectcapture_jni.arcsoft.so"
 FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
 
-# Helper: get human-readable size (M or K)
-get_size() {
-  local BYTES
-  if [ -f "$1" ]; then
-    BYTES=$(stat -c%s "$1" 2>/dev/null)
-  elif [ -d "$1" ]; then
-    BYTES=$(du -sb "$1" 2>/dev/null | cut -f1)
-  else
-    echo "?"
-    return
-  fi
-  if [ -z "$BYTES" ]; then
-    echo "?"
-  elif [ "$BYTES" -ge 1048576 ]; then
-    echo "$(( (BYTES + 524288) / 1048576 ))M"
-  else
-    echo "$(( (BYTES + 512) / 1024 ))K"
-  fi
-}
-
-# Helper: check if item is in a space-separated list
-is_target() {
-  local item="$1" list="$2"
-  for i in $list; do
-    [ "$i" = "$item" ] && return 0
-  done
-  return 1
-}
-
 echo ""; echo "[1/6] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
 ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
@@ -122,7 +93,7 @@ if tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/de
   echo "  ✅ Extracted via erofs"
 else
   echo "  erofs failed - trying debugfs..."
-
+  
   # Extract app folders
   for FOLDER in $APP_FOLDERS; do
     for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
@@ -133,7 +104,7 @@ else
       fi
     done
   done
-
+  
   # Extract priv-app folders
   for FOLDER in $PRIVAPP_FOLDERS; do
     for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
@@ -144,7 +115,7 @@ else
       fi
     done
   done
-
+  
   # Extract etc folders
   for FOLDER in $ETC_FOLDERS; do
     for TARGET in "etc/$FOLDER" "system/etc/$FOLDER"; do
@@ -155,7 +126,7 @@ else
       fi
     done
   done
-
+  
   # Extract media files
   for FILE in $MEDIA_FILES; do
     for SRC in "media/$FILE" "system/media/$FILE"; do
@@ -166,7 +137,7 @@ else
       fi
     done
   done
-
+  
   # Extract lib64 files
   for FILE in $LIB64_FILES; do
     for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
@@ -177,7 +148,7 @@ else
       fi
     done
   done
-
+  
   # Extract framework JARs
   for JAR in $FRAMEWORK_JARS; do
     for SRC in "framework/$JAR" "system/framework/$JAR"; do
@@ -190,23 +161,58 @@ else
   done
 fi
 
-echo ""; echo "[6/6] Dumping system contents..."
+echo ""; echo "[6/6] Dumping & copying targets..."
 
-# Find the extracted root
-ROOT_DIR=""
-for D in "system_extracted/system" "system_extracted/system_a" "system_extracted"; do
-  if [ -d "$D/app" ] || [ -d "$D/framework" ]; then
-    ROOT_DIR="$D"
-    break
+# Helper: human-readable size
+get_size() {
+  local BYTES
+  if [ -f "$1" ]; then
+    BYTES=$(stat -c%s "$1" 2>/dev/null)
+  elif [ -d "$1" ]; then
+    BYTES=$(du -sb "$1" 2>/dev/null | cut -f1)
+  else
+    echo "?"
+    return
   fi
-done
-[ -z "$ROOT_DIR" ] && ROOT_DIR="system_extracted"
+  if [ -z "$BYTES" ]; then echo "?"; return; fi
+  if [ "$BYTES" -ge 1048576 ]; then
+    echo "$(( (BYTES + 524288) / 1048576 ))M"
+  else
+    echo "$(( (BYTES + 512) / 1024 ))K"
+  fi
+}
+
+# Helper: check if item is in list
+is_target() {
+  local item="$1" list="$2"
+  for i in $list; do
+    [ "$i" = "$item" ] && return 0
+  done
+  return 1
+}
+
+# Find the correct base path where app/priv-app/etc actually live
+find_base() {
+  for B in \
+    "system_extracted/app" \
+    "system_extracted/system/app" \
+    "system_extracted/system_a/app" \
+    "system_extracted/system/system/app" \
+    "system_extracted/system_a/system/app"; do
+    if [ -d "$B" ]; then
+      dirname "$B"
+      return
+    fi
+  done
+  echo "system_extracted"
+}
+BASE=$(find_base)
 
 # ─── app/ ───
 echo ""
 echo "--- system/app ---"
-if [ -d "$ROOT_DIR/app" ]; then
-  for ITEM in "$ROOT_DIR/app/"*/; do
+if [ -d "$BASE/app" ]; then
+  for ITEM in "$BASE/app/"*/; do
     [ -d "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     SIZE=$(get_size "$ITEM")
@@ -219,14 +225,14 @@ if [ -d "$ROOT_DIR/app" ]; then
     fi
   done
 else
-  echo "    (empty or not found)"
+  echo "    (empty)"
 fi
 
 # ─── priv-app/ ───
 echo ""
 echo "--- system/priv-app ---"
-if [ -d "$ROOT_DIR/priv-app" ]; then
-  for ITEM in "$ROOT_DIR/priv-app/"*/; do
+if [ -d "$BASE/priv-app" ]; then
+  for ITEM in "$BASE/priv-app/"*/; do
     [ -d "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     SIZE=$(get_size "$ITEM")
@@ -239,14 +245,14 @@ if [ -d "$ROOT_DIR/priv-app" ]; then
     fi
   done
 else
-  echo "    (empty or not found)"
+  echo "    (empty)"
 fi
 
 # ─── etc/ ───
 echo ""
 echo "--- system/etc ---"
-if [ -d "$ROOT_DIR/etc" ]; then
-  for ITEM in "$ROOT_DIR/etc/"*/; do
+if [ -d "$BASE/etc" ]; then
+  for ITEM in "$BASE/etc/"*/; do
     [ -d "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     SIZE=$(get_size "$ITEM")
@@ -258,7 +264,7 @@ if [ -d "$ROOT_DIR/etc" ]; then
       printf "      %-40s %8s\n" "$NAME" "$SIZE"
     fi
   done
-  for ITEM in "$ROOT_DIR/etc/"*; do
+  for ITEM in "$BASE/etc/"*; do
     [ -f "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     SIZE=$(get_size "$ITEM")
@@ -271,14 +277,23 @@ if [ -d "$ROOT_DIR/etc" ]; then
     fi
   done
 else
-  echo "    (empty or not found)"
+  echo "    (empty)"
 fi
 
 # ─── media/ ───
 echo ""
 echo "--- system/media ---"
-if [ -d "$ROOT_DIR/media" ]; then
-  for ITEM in "$ROOT_DIR/media/"*; do
+MEDIA_BASE=""
+for B in \
+  "system_extracted/media" \
+  "system_extracted/system/media" \
+  "system_extracted/system_a/media" \
+  "system_extracted/system/system/media" \
+  "system_extracted/system_a/system/media"; do
+  [ -d "$B" ] && MEDIA_BASE="$B" && break
+done
+if [ -n "$MEDIA_BASE" ]; then
+  for ITEM in "$MEDIA_BASE/"*; do
     [ -e "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     if [ -f "$ITEM" ]; then
@@ -293,14 +308,23 @@ if [ -d "$ROOT_DIR/media" ]; then
     fi
   done
 else
-  echo "    (empty or not found)"
+  echo "    (empty)"
 fi
 
 # ─── lib64/ ───
 echo ""
 echo "--- system/lib64 ---"
-if [ -d "$ROOT_DIR/lib64" ]; then
-  for ITEM in "$ROOT_DIR/lib64/"*; do
+LIB64_BASE=""
+for B in \
+  "system_extracted/lib64" \
+  "system_extracted/system/lib64" \
+  "system_extracted/system_a/lib64" \
+  "system_extracted/system/system/lib64" \
+  "system_extracted/system_a/system/lib64"; do
+  [ -d "$B" ] && LIB64_BASE="$B" && break
+done
+if [ -n "$LIB64_BASE" ]; then
+  for ITEM in "$LIB64_BASE/"*; do
     [ -e "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     if [ -f "$ITEM" ]; then
@@ -315,14 +339,23 @@ if [ -d "$ROOT_DIR/lib64" ]; then
     fi
   done
 else
-  echo "    (empty or not found)"
+  echo "    (empty)"
 fi
 
 # ─── framework/ ───
 echo ""
 echo "--- system/framework ---"
-if [ -d "$ROOT_DIR/framework" ]; then
-  for ITEM in "$ROOT_DIR/framework/"*; do
+FW_BASE=""
+for B in \
+  "system_extracted/framework" \
+  "system_extracted/system/framework" \
+  "system_extracted/system_a/framework" \
+  "system_extracted/system/system/framework" \
+  "system_extracted/system_a/system/framework"; do
+  [ -d "$B" ] && FW_BASE="$B" && break
+done
+if [ -n "$FW_BASE" ]; then
+  for ITEM in "$FW_BASE/"*; do
     [ -e "$ITEM" ] || continue
     NAME=$(basename "$ITEM")
     if [ -f "$ITEM" ]; then
@@ -337,7 +370,7 @@ if [ -d "$ROOT_DIR/framework" ]; then
     fi
   done
 else
-  echo "    (empty or not found)"
+  echo "    (empty)"
 fi
 
 rm -rf system_extracted super_dump *.img
