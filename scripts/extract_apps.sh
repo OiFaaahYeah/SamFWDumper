@@ -26,7 +26,7 @@ esac
 
 # Define targets
 APP_FOLDERS="SketchBook"
-PRIVAPP_FOLDERS="BixbyInterpreter SamsungGallery2018"
+PRIVAPP_FOLDERS="BixbyInterpreter SamsungGallery2018 PhotoEditor_AIFull Bixby SamsungSmartSuggestions"
 ETC_FOLDERS="ailasso ailassomatting inpainting objectremoval reflectionremoval shadowremoval style_transfer"
 MEDIA_FILES="bootsamsung.qmg bootsamsungloop.qmg shutdown.qmg"
 LIB64_FILES="libobjectcapture.arcsoft.so libobjectcapture_jni.arcsoft.so"
@@ -116,6 +116,15 @@ else
     done
   done
   
+  # Fallback: PhotoEditor_AIFull -> PhotoEditor_Full
+  for TARGET in "priv-app/PhotoEditor_Full" "system/priv-app/PhotoEditor_Full"; do
+    if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+      mkdir -p "system_extracted/priv-app/PhotoEditor_AIFull"
+      debugfs -R "rdump $TARGET system_extracted/priv-app/PhotoEditor_AIFull" "$SYSTEM_IMG" 2>/dev/null
+      break
+    fi
+  done
+  
   # Extract etc folders
   for FOLDER in $ETC_FOLDERS; do
     for TARGET in "etc/$FOLDER" "system/etc/$FOLDER"; do
@@ -200,6 +209,23 @@ for FOLDER in $PRIVAPP_FOLDERS; do
       break
     fi
   done
+  # Fallback: PhotoEditor_AIFull -> PhotoEditor_Full
+  if ! $FOUND && [ "$FOLDER" = "PhotoEditor_AIFull" ]; then
+    for BASE in \
+      "system_extracted/priv-app/PhotoEditor_Full" \
+      "system_extracted/system/priv-app/PhotoEditor_Full" \
+      "system_extracted/system_a/priv-app/PhotoEditor_Full" \
+      "system_extracted/system/system/priv-app/PhotoEditor_Full" \
+      "system_extracted/system_a/system/priv-app/PhotoEditor_Full"; do
+      if [ -d "$BASE" ]; then
+        mkdir -p "output/Apps/system/priv-app"
+        cp -r "$BASE" "output/Apps/system/priv-app/PhotoEditor_AIFull"
+        echo "    ✓ priv-app/PhotoEditor_AIFull (found as PhotoEditor_Full)"
+        FOUND=true
+        break
+      fi
+    done
+  fi
   $FOUND || echo "  ❌ $FOLDER not found"
 done
 
