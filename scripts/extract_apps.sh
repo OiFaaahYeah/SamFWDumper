@@ -24,13 +24,13 @@ case "$COMPRESSION_LEVEL" in
   *) XZ_FLAGS="-0" ;;
 esac
 
-# Define targets
-APP_FOLDERS="SketchBook"
-PRIVAPP_FOLDERS="BixbyInterpreter SamsungGallery2018 PhotoEditor_AIFull Bixby SamsungSmartSuggestions"
-ETC_FOLDERS="ailasso ailassomatting inpainting objectremoval reflectionremoval shadowremoval style_transfer"
-MEDIA_FILES="bootsamsung.qmg bootsamsungloop.qmg shutdown.qmg"
-LIB64_FILES="libobjectcapture.arcsoft.so libobjectcapture_jni.arcsoft.so"
-FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
+# Define targets from txt files
+APP_FOLDERS=$(cat targets/app.txt 2>/dev/null | tr '\n' ' ')
+PRIVAPP_FOLDERS=$(cat targets/priv-app.txt 2>/dev/null | tr '\n' ' ')
+ETC_FOLDERS=$(cat targets/etc.txt 2>/dev/null | tr '\n' ' ')
+MEDIA_FILES=$(cat targets/media.txt 2>/dev/null | tr '\n' ' ')
+LIB64_FILES=$(cat targets/lib64.txt 2>/dev/null | tr '\n' ' ')
+FRAMEWORK_JARS=$(cat targets/framework.txt 2>/dev/null | tr '\n' ' ')
 
 echo ""; echo "[1/6] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
