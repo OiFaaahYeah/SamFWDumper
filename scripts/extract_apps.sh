@@ -29,6 +29,7 @@ APP_FOLDERS="SketchBook"
 PRIVAPP_FOLDERS="BixbyInterpreter SamsungGallery2018"
 ETC_FOLDERS="ailasso ailassomatting inpainting objectremoval reflectionremoval shadowremoval style_transfer"
 MEDIA_FILES="bootsamsung.qmg bootsamsungloop.qmg shutdown.qmg"
+LIB64_FILES="libobjectcapture.arcsoft.so libobjectcapture_jni.arcsoft.so"
 FRAMEWORK_JARS="framework.jar knoxsdk.jar samsungkeystoreutils.jar services.jar ssrm.jar"
 
 echo ""; echo "[1/6] Downloading..."
@@ -137,6 +138,17 @@ else
     done
   done
   
+  # Extract lib64 files
+  for FILE in $LIB64_FILES; do
+    for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
+      if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
+        mkdir -p "system_extracted/lib64"
+        debugfs -R "dump $SRC system_extracted/lib64/$FILE" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
+  
   # Extract framework JARs
   for JAR in $FRAMEWORK_JARS; do
     for SRC in "framework/$JAR" "system/framework/$JAR"; do
@@ -224,6 +236,26 @@ for FILE in $MEDIA_FILES; do
     if [ -f "$BASE" ]; then
       cp "$BASE" "output/Apps/system/media/$FILE"
       echo "    ✓ media/$FILE"
+      FILE_FOUND=true
+      break
+    fi
+  done
+  $FILE_FOUND || echo "  ❌ $FILE not found"
+done
+
+# Copy lib64 files to Apps/system/lib64/
+mkdir -p "output/Apps/system/lib64"
+for FILE in $LIB64_FILES; do
+  FILE_FOUND=false
+  for BASE in \
+    "system_extracted/lib64/$FILE" \
+    "system_extracted/system/lib64/$FILE" \
+    "system_extracted/system_a/lib64/$FILE" \
+    "system_extracted/system/system/lib64/$FILE" \
+    "system_extracted/system_a/system/lib64/$FILE"; do
+    if [ -f "$BASE" ]; then
+      cp "$BASE" "output/Apps/system/lib64/$FILE"
+      echo "    ✓ lib64/$FILE"
       FILE_FOUND=true
       break
     fi
