@@ -9,7 +9,7 @@
 # is strictly prohibited. For permissions: https://github.com/Xiatsuma
 # =============================================================================
 
-name: Firmware Downloader
+name: 4. Full FWFetch
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq curl
 
       - name: Download and Upload
-        run: bash scripts/download_firmware.sh "${{ github.event.inputs.url }}"
+        run: bash scripts/full_fwfetch.sh "${{ github.event.inputs.url }}"
 
       - name: Get Firmware Info
         id: fwinfo
