@@ -9,7 +9,7 @@
 # is strictly prohibited. For permissions: https://github.com/Xiatsuma
 # =============================================================================
 
-name: System Files Extractor
+name: 2. System Files Extractor
 
 on:
   workflow_dispatch:
@@ -120,11 +120,11 @@ jobs:
             linux-modules-extra-$(uname -r)
 
       - name: Make tools executable
-        run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/system_files.sh
+        run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/extract_system_files.sh
 
       - name: Run System Files Extraction
         run: |
-          bash scripts/system_files.sh \
+          bash scripts/extract_system_files.sh \
             "${{ github.event.inputs.url }}" \
             "${{ github.event.inputs.compression }}" \
             "${{ github.event.inputs.extract_app }}" \
