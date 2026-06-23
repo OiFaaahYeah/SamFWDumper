@@ -9,7 +9,7 @@
 # is strictly prohibited. For permissions: https://github.com/Xiatsuma
 # =============================================================================
 
-name: Images Extractor
+name: 1. Images Extractor
 
 on:
   workflow_dispatch:
@@ -118,9 +118,9 @@ jobs:
             android-sdk-libsparse-utils
 
       - name: Make tools executable
-        run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/dump.sh
+        run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/extract_images.sh
 
-      - name: Run Dump Script
+      - name: Run Images Extraction
         run: |
           PARTITIONS=""
           ${{ github.event.inputs.extract_system }} && PARTITIONS="$PARTITIONS system"
@@ -146,7 +146,7 @@ jobs:
             exit 1
           fi
           
-          bash scripts/dump.sh \
+          bash scripts/extract_images.sh \
             "${{ github.event.inputs.url }}" \
             "${{ github.event.inputs.compression }}" \
             "$PARTITIONS"
