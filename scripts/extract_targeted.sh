@@ -1,9 +1,13 @@
 #!/bin/bash
 # =============================================================================
-# SamFW Apps Extractor - Extract specific app folders from Samsung firmware
+# SamFWDumper - Automated Samsung Firmware Extraction
 # Copyright (C) 2026 Xiatsuma
 # Licensed under PolyForm Noncommercial License 1.0.0
 # https://polyformproject.org/licenses/noncommercial/1.0.0
+#
+# You may NOT use this file except in compliance with the License.
+# Commercial use, removal of this header, or distribution without attribution
+# is strictly prohibited. For permissions: https://github.com/Xiatsuma
 # =============================================================================
 set -e
 
@@ -25,7 +29,6 @@ case "$COMPRESSION_LEVEL" in
   *) XZ_FLAGS="-0" ;;
 esac
 
-# Define targets from txt files
 APP_FOLDERS=$(cat targets/app.txt 2>/dev/null | tr '\n' ' ')
 PRIVAPP_FOLDERS=$(cat targets/priv-app.txt 2>/dev/null | tr '\n' ' ')
 ETC_FOLDERS=$(cat targets/etc.txt 2>/dev/null | tr '\n' ' ')
@@ -59,7 +62,6 @@ tar -xf "$AP_FILE" >/dev/null 2>&1
 rm -f "$AP_FILE"
 echo "✅ Done"
 
-# Helper: extract from f2fs image via mount
 extract_f2fs_mount() {
   local IMG="$1" OUT_DIR="$2"
   sudo modprobe f2fs 2>/dev/null || true
@@ -72,7 +74,6 @@ extract_f2fs_mount() {
   fi
   echo "  ✅ Mounted f2fs successfully"
 
-  # Extract app folders
   for FOLDER in $APP_FOLDERS; do
     FOUND=false
     for SRC_PATH in "$MNT/app/$FOLDER" "$MNT/system/app/$FOLDER"; do
@@ -86,7 +87,6 @@ extract_f2fs_mount() {
     $FOUND || echo "  ⚠️ app/$FOLDER not found"
   done
 
-  # Extract priv-app folders
   for FOLDER in $PRIVAPP_FOLDERS; do
     FOUND=false
     for SRC_PATH in "$MNT/priv-app/$FOLDER" "$MNT/system/priv-app/$FOLDER"; do
@@ -110,7 +110,6 @@ extract_f2fs_mount() {
     $FOUND || echo "  ⚠️ priv-app/$FOLDER not found"
   done
 
-  # Extract etc folders
   for FOLDER in $ETC_FOLDERS; do
     FOUND=false
     for SRC_PATH in "$MNT/etc/$FOLDER" "$MNT/system/etc/$FOLDER"; do
@@ -124,7 +123,6 @@ extract_f2fs_mount() {
     $FOUND || echo "  ⚠️ etc/$FOLDER not found"
   done
 
-  # Extract media files
   for FILE in $MEDIA_FILES; do
     FILE_FOUND=false
     for SRC_PATH in "$MNT/media/$FILE" "$MNT/system/media/$FILE"; do
@@ -138,7 +136,6 @@ extract_f2fs_mount() {
     $FILE_FOUND || echo "  ⚠️ media/$FILE not found"
   done
 
-  # Extract lib64 files
   for FILE in $LIB64_FILES; do
     FILE_FOUND=false
     for SRC_PATH in "$MNT/lib64/$FILE" "$MNT/system/lib64/$FILE"; do
@@ -152,7 +149,6 @@ extract_f2fs_mount() {
     $FILE_FOUND || echo "  ⚠️ lib64/$FILE not found"
   done
 
-  # Extract framework JARs
   for JAR in $FRAMEWORK_JARS; do
     JAR_FOUND=false
     for SRC_PATH in "$MNT/framework/$JAR" "$MNT/system/framework/$JAR"; do
@@ -212,7 +208,6 @@ elif tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/
 else
   echo "  erofs failed - trying debugfs..."
   
-  # Extract app folders
   for FOLDER in $APP_FOLDERS; do
     for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -223,7 +218,6 @@ else
     done
   done
   
-  # Extract priv-app folders
   for FOLDER in $PRIVAPP_FOLDERS; do
     for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -234,7 +228,6 @@ else
     done
   done
   
-  # Fallback: PhotoEditor_AIFull -> PhotoEditor_Full
   for TARGET in "priv-app/PhotoEditor_Full" "system/priv-app/PhotoEditor_Full"; do
     if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
       mkdir -p "system_extracted/priv-app/PhotoEditor_AIFull"
@@ -243,7 +236,6 @@ else
     fi
   done
   
-  # Extract etc folders
   for FOLDER in $ETC_FOLDERS; do
     for TARGET in "etc/$FOLDER" "system/etc/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -254,7 +246,6 @@ else
     done
   done
   
-  # Extract media files
   for FILE in $MEDIA_FILES; do
     for SRC in "media/$FILE" "system/media/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -265,7 +256,6 @@ else
     done
   done
   
-  # Extract lib64 files
   for FILE in $LIB64_FILES; do
     for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -276,7 +266,6 @@ else
     done
   done
   
-  # Extract framework JARs
   for JAR in $FRAMEWORK_JARS; do
     for SRC in "framework/$JAR" "system/framework/$JAR"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -290,7 +279,6 @@ fi
 
 echo ""; echo "[6/6] Copying targets..."
 
-# Helper: size
 get_size() {
   local BYTES
   if [ -f "$1" ]; then
@@ -317,7 +305,6 @@ is_target() {
   return 1
 }
 
-# --- app/ ---
 if [ "$SHOW_ALL" = "true" ]; then
   echo ""
   echo "--- system/app ---"
@@ -367,7 +354,6 @@ else
   done
 fi
 
-# --- priv-app/ ---
 if [ "$SHOW_ALL" = "true" ]; then
   echo ""
   echo "--- system/priv-app ---"
@@ -397,7 +383,6 @@ if [ "$SHOW_ALL" = "true" ]; then
   done
   $PRIVAPP_FOUND || echo "    (empty)"
   
-  # Also copy any targets not found in full dump (fallbacks)
   for FOLDER in $PRIVAPP_FOLDERS; do
     [ -d "output/Apps/system/priv-app/$FOLDER" ] && continue
     FOUND=false
@@ -466,7 +451,6 @@ else
   done
 fi
 
-# --- etc/ ---
 for FOLDER in $ETC_FOLDERS; do
   FOUND=false
   for BASE in \
@@ -486,7 +470,6 @@ for FOLDER in $ETC_FOLDERS; do
   $FOUND || echo "  ❌ $FOLDER not found"
 done
 
-# --- media/ ---
 mkdir -p "output/Apps/system/media"
 for FILE in $MEDIA_FILES; do
   FILE_FOUND=false
@@ -506,7 +489,6 @@ for FILE in $MEDIA_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-# --- lib64/ ---
 mkdir -p "output/Apps/system/lib64"
 for FILE in $LIB64_FILES; do
   FILE_FOUND=false
@@ -526,7 +508,6 @@ for FILE in $LIB64_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-# --- framework/ ---
 mkdir -p "output/Apps/system/framework"
 for JAR in $FRAMEWORK_JARS; do
   JAR_FOUND=false
