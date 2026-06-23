@@ -31,6 +31,10 @@ on:
         options:
         - 'gofile'
         - 'github releases'
+      show_all:
+        description: 'Show ALL folders in app & priv-app (not just selected)'
+        type: boolean
+        default: false
 
 jobs:
   extract:
@@ -60,7 +64,8 @@ jobs:
         run: |
           bash scripts/extract_apps.sh \
             "${{ github.event.inputs.url }}" \
-            "${{ github.event.inputs.compression }}"
+            "${{ github.event.inputs.compression }}" \
+            "${{ github.event.inputs.show_all }}"
 
       - name: Get Firmware Info
         id: fwinfo
