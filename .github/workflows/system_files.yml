@@ -115,7 +115,9 @@ jobs:
             unzip \
             curl \
             android-sdk-libsparse-utils \
-            e2fsprogs
+            e2fsprogs \
+            f2fs-tools \
+            linux-modules-extra-$(uname -r)
 
       - name: Make tools executable
         run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/system_files.sh
