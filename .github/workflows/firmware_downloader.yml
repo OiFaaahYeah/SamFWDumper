@@ -1,0 +1,67 @@
+# =============================================================================
+# SamFWDumper - Automated Samsung Firmware Extraction
+# Copyright (C) 2026 Xiatsuma
+# Licensed under PolyForm Noncommercial License 1.0.0
+# https://polyformproject.org/licenses/noncommercial/1.0.0
+#
+# You may NOT use this file except in compliance with the License.
+# Commercial use, removal of this header, or distribution without attribution
+# is strictly prohibited. For permissions: https://github.com/Xiatsuma
+# =============================================================================
+
+name: Firmware Downloader
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'SamFW Direct Download Link'
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq curl
+
+      - name: Download and Upload
+        run: bash scripts/download_firmware.sh "${{ github.event.inputs.url }}"
+
+      - name: Get Firmware Info
+        id: fwinfo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          AP_CODE=$(cat ap_code.txt 2>/dev/null || echo "Unknown")
+          CSC_CODE=$(cat csc_code.txt 2>/dev/null || echo "Unknown")
+          BASE_TAG=$(date +"%d%m%Y_%H,%M,%S")
+          RELEASE_TAG="$BASE_TAG"
+          if gh release view "$RELEASE_TAG" &>/dev/null 2>&1; then
+            SUFFIX=1
+            while gh release view "${BASE_TAG}_${SUFFIX}" &>/dev/null 2>&1; do
+              SUFFIX=$((SUFFIX + 1))
+            done
+            RELEASE_TAG="${BASE_TAG}_${SUFFIX}"
+          fi
+          echo "ap_code=$AP_CODE" >> $GITHUB_OUTPUT
+          echo "csc_code=$CSC_CODE" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Create Release with GoFile Link
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          GOFILE_URL=$(cat download_url.txt 2>/dev/null || echo "Upload failed")
+          NOTES_FILE=$(mktemp)
+          echo "${GOFILE_URL}" > "$NOTES_FILE"
+          gh release create "${{ steps.fwinfo.outputs.release_tag }}" \
+            --title "${{ steps.fwinfo.outputs.ap_code }} | ${{ steps.fwinfo.outputs.csc_code }}" \
+            --notes-file "$NOTES_FILE"
+          rm -f "$NOTES_FILE"
+          
