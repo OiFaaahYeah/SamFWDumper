@@ -108,6 +108,53 @@ tar -xf "$AP_FILE" >/dev/null 2>&1
 rm -f "$AP_FILE"
 echo "✅ Done"
 
+# Helper: extract files from f2fs image via mount
+extract_f2fs() {
+  local IMG="$1" OUT_DIR="$2" TARGETS="$3" SINGLE_FILES="$4"
+  sudo modprobe f2fs 2>/dev/null || true
+  local MNT="/tmp/f2fs_mount_$$"
+  mkdir -p "$MNT"
+  if ! sudo mount -t f2fs -o ro,loop "$IMG" "$MNT" 2>/dev/null; then
+    echo "  ❌ f2fs mount failed"
+    rm -rf "$MNT"
+    return 1
+  fi
+  echo "  ✅ Mounted f2fs successfully"
+  for TARGET in $TARGETS; do
+    IS_FILE=false
+    for SF in $SINGLE_FILES; do
+      [ "$TARGET" = "$SF" ] && IS_FILE=true && break
+    done
+    if $IS_FILE; then
+      FOUND=false
+      for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
+        if sudo test -f "$SRC_PATH" 2>/dev/null; then
+          mkdir -p "$OUT_DIR/$(dirname "$TARGET")"
+          sudo cp "$SRC_PATH" "$OUT_DIR/$TARGET"
+          sudo chown $(id -u):$(id -g) "$OUT_DIR/$TARGET"
+          FOUND=true; break
+        fi
+      done
+      $FOUND || echo "  ⚠️ $TARGET not found"
+    else
+      FOUND=false
+      local DEST="$OUT_DIR/$(dirname "$TARGET")"
+      mkdir -p "$DEST"
+      for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
+        if sudo test -d "$SRC_PATH" 2>/dev/null; then
+          sudo cp -r "$SRC_PATH" "$DEST/" 2>/dev/null
+          sudo chown -R $(id -u):$(id -g) "$DEST/$(basename "$TARGET")"
+          FOUND=true; break
+        fi
+      done
+      $FOUND || echo "  ⚠️ $TARGET not found"
+    fi
+  done
+  sudo umount "$MNT"
+  rm -rf "$MNT"
+  return 0
+}
+
 echo ""; echo "[5/8] Getting system.img and product.img..."
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
 if [ -n "$SUPER_FILE" ]; then
@@ -167,32 +214,55 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
     mkdir -p product_extracted
     RRO_FOUND=false
 
-    tools/erofs-utils/extract.erofs -i "$PRODUCT_IMG" -x -o product_extracted/ >/dev/null 2>&1 || {
-      for SRC_PATH in "overlay" "product/overlay"; do
-        if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
-          mkdir -p "product_extracted/overlay"
-          debugfs -R "rdump $SRC_PATH product_extracted/overlay" "$PRODUCT_IMG" 2>/dev/null
+    PROD_FS_TYPE=$(blkid -o value -s TYPE "$PRODUCT_IMG" 2>/dev/null || file "$PRODUCT_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
+
+    if [ "$PROD_FS_TYPE" = "f2fs" ]; then
+      echo "  Detected f2fs product.img - mounting..."
+      sudo modprobe f2fs 2>/dev/null || true
+      PROD_MNT="/tmp/product_f2fs_$$"
+      mkdir -p "$PROD_MNT"
+      if sudo mount -t f2fs -o ro,loop "$PRODUCT_IMG" "$PROD_MNT" 2>/dev/null; then
+        echo "  ✅ Mounted product f2fs"
+        APK_SRC=$(sudo find "$PROD_MNT" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
+        if [ -n "$APK_SRC" ]; then
+          sudo cp "$APK_SRC" "output/$(basename "$APK_SRC")"
+          sudo chown $(id -u):$(id -g) "output/$(basename "$APK_SRC")"
+          echo "    ✓ $(basename "$APK_SRC")"
+          RRO_FOUND=true
+        fi
+        sudo umount "$PROD_MNT"
+        rm -rf "$PROD_MNT"
+      else
+        echo "  ❌ product f2fs mount failed"
+      fi
+    else
+      tools/erofs-utils/extract.erofs -i "$PRODUCT_IMG" -x -o product_extracted/ >/dev/null 2>&1 || {
+        for SRC_PATH in "overlay" "product/overlay"; do
+          if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
+            mkdir -p "product_extracted/overlay"
+            debugfs -R "rdump $SRC_PATH product_extracted/overlay" "$PRODUCT_IMG" 2>/dev/null
+            break
+          fi
+        done
+      }
+
+      for BASE in \
+        "product_extracted/product_a/product/overlay" \
+        "product_extracted/product_a/overlay" \
+        "product_extracted/product_b/product/overlay" \
+        "product_extracted/product_b/overlay" \
+        "product_extracted/product/overlay" \
+        "product_extracted/overlay" \
+        "product_extracted/system/product/overlay"; do
+        APK_SRC=$(find "$BASE" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
+        if [ -n "$APK_SRC" ]; then
+          cp "$APK_SRC" "output/$(basename "$APK_SRC")"
+          echo "    ✓ $(basename "$APK_SRC")"
+          RRO_FOUND=true
           break
         fi
       done
-    }
-
-    for BASE in \
-      "product_extracted/product_a/product/overlay" \
-      "product_extracted/product_a/overlay" \
-      "product_extracted/product_b/product/overlay" \
-      "product_extracted/product_b/overlay" \
-      "product_extracted/product/overlay" \
-      "product_extracted/overlay" \
-      "product_extracted/system/product/overlay"; do
-      APK_SRC=$(find "$BASE" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
-      if [ -n "$APK_SRC" ]; then
-        cp "$APK_SRC" "output/$(basename "$APK_SRC")"
-        echo "    ✓ $(basename "$APK_SRC")"
-        RRO_FOUND=true
-        break
-      fi
-    done
+    fi
     $RRO_FOUND || echo "  ⚠️ framework-res RRO APK not found"
     rm -rf product_extracted
   fi
@@ -209,7 +279,14 @@ else
 
   SINGLE_FILES="build.prop floating_features.xml"
 
-  if tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
+  FS_TYPE=$(blkid -o value -s TYPE "$SYSTEM_IMG" 2>/dev/null || file "$SYSTEM_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
+
+  if [ "$FS_TYPE" = "f2fs" ]; then
+    echo "  Detected f2fs filesystem - mounting..."
+    ALL_TARGETS="$TARGETS"
+    [ "$WANT_WALLPAPER_RES" = "true" ] && ALL_TARGETS="$ALL_TARGETS priv-app/wallpaper-res"
+    extract_f2fs "$SYSTEM_IMG" "system_extracted" "$ALL_TARGETS" "$SINGLE_FILES" || true
+  elif tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
     echo "  ✅ Extracted via erofs"
   else
     echo "  erofs failed - trying debugfs..."
