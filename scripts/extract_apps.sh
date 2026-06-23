@@ -13,6 +13,7 @@ echo "════════════════════════�
 
 URL="$1"
 COMPRESSION_LEVEL="${2:-0}"
+SHOW_ALL="${3:-false}"
 
 chmod +x tools/android-tools/* tools/erofs-utils/* 2>/dev/null || true
 
@@ -172,64 +173,183 @@ fi
 
 echo ""; echo "[6/6] Copying targets..."
 
-# Copy app folders to Apps/system/app/
-for FOLDER in $APP_FOLDERS; do
-  FOUND=false
-  for BASE in \
-    "system_extracted/app/$FOLDER" \
-    "system_extracted/system/app/$FOLDER" \
-    "system_extracted/system_a/app/$FOLDER" \
-    "system_extracted/system/system/app/$FOLDER" \
-    "system_extracted/system_a/system/app/$FOLDER"; do
-    if [ -d "$BASE" ]; then
-      mkdir -p "output/Apps/system/app"
-      cp -r "$BASE" "output/Apps/system/app/$FOLDER"
-      echo "    ✓ app/$FOLDER"
-      FOUND=true
-      break
-    fi
-  done
-  $FOUND || echo "  ❌ $FOLDER not found"
-done
+# Helper: size
+get_size() {
+  local BYTES
+  if [ -f "$1" ]; then
+    BYTES=$(stat -c%s "$1" 2>/dev/null)
+  elif [ -d "$1" ]; then
+    BYTES=$(du -sb "$1" 2>/dev/null | cut -f1)
+  else
+    echo "?"
+    return
+  fi
+  if [ -z "$BYTES" ]; then echo "?"; return; fi
+  if [ "$BYTES" -ge 1048576 ]; then
+    echo "$(( (BYTES + 524288) / 1048576 ))M"
+  else
+    echo "$(( (BYTES + 512) / 1024 ))K"
+  fi
+}
 
-# Copy priv-app folders to Apps/system/priv-app/
-for FOLDER in $PRIVAPP_FOLDERS; do
-  FOUND=false
+is_target() {
+  local item="$1" list="$2"
+  for i in $list; do
+    [ "$i" = "$item" ] && return 0
+  done
+  return 1
+}
+
+# --- app/ ---
+if [ "$SHOW_ALL" = "true" ]; then
+  echo ""
+  echo "--- system/app ---"
+  APP_FOUND=false
   for BASE in \
-    "system_extracted/priv-app/$FOLDER" \
-    "system_extracted/system/priv-app/$FOLDER" \
-    "system_extracted/system_a/priv-app/$FOLDER" \
-    "system_extracted/system/system/priv-app/$FOLDER" \
-    "system_extracted/system_a/system/priv-app/$FOLDER"; do
+    "system_extracted/app" \
+    "system_extracted/system/app" \
+    "system_extracted/system_a/app" \
+    "system_extracted/system/system/app" \
+    "system_extracted/system_a/system/app"; do
     if [ -d "$BASE" ]; then
-      mkdir -p "output/Apps/system/priv-app"
-      cp -r "$BASE" "output/Apps/system/priv-app/$FOLDER"
-      echo "    ✓ priv-app/$FOLDER"
-      FOUND=true
+      for ITEM in "$BASE/"*/; do
+        [ -d "$ITEM" ] || continue
+        NAME=$(basename "$ITEM")
+        SIZE=$(get_size "$ITEM")
+        if is_target "$NAME" "$APP_FOLDERS"; then
+          printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
+          mkdir -p "output/Apps/system/app"
+          cp -r "$ITEM" "output/Apps/system/app/$NAME"
+        else
+          printf "      %-40s %8s\n" "$NAME" "$SIZE"
+        fi
+      done
+      APP_FOUND=true
       break
     fi
   done
-  # Fallback: PhotoEditor_AIFull -> PhotoEditor_Full
-  if ! $FOUND && [ "$FOLDER" = "PhotoEditor_AIFull" ]; then
+  $APP_FOUND || echo "    (empty)"
+else
+  for FOLDER in $APP_FOLDERS; do
+    FOUND=false
     for BASE in \
-      "system_extracted/priv-app/PhotoEditor_Full" \
-      "system_extracted/system/priv-app/PhotoEditor_Full" \
-      "system_extracted/system_a/priv-app/PhotoEditor_Full" \
-      "system_extracted/system/system/priv-app/PhotoEditor_Full" \
-      "system_extracted/system_a/system/priv-app/PhotoEditor_Full"; do
+      "system_extracted/app/$FOLDER" \
+      "system_extracted/system/app/$FOLDER" \
+      "system_extracted/system_a/app/$FOLDER" \
+      "system_extracted/system/system/app/$FOLDER" \
+      "system_extracted/system_a/system/app/$FOLDER"; do
       if [ -d "$BASE" ]; then
-        mkdir -p "output/Apps/system/priv-app"
-        cp -r "$BASE" "output/Apps/system/priv-app/PhotoEditor_AIFull"
-        echo "    ✓ priv-app/PhotoEditor_AIFull (found as PhotoEditor_Full)"
+        mkdir -p "output/Apps/system/app"
+        cp -r "$BASE" "output/Apps/system/app/$FOLDER"
+        echo "    ✓ app/$FOLDER"
         FOUND=true
         break
       fi
     done
-  fi
-  $FOUND || echo "  ❌ $FOLDER not found"
-done
+    $FOUND || echo "  ❌ $FOLDER not found"
+  done
+fi
 
-# Copy etc folders to Apps/system/etc/
+# --- priv-app/ ---
+if [ "$SHOW_ALL" = "true" ]; then
+  echo ""
+  echo "--- system/priv-app ---"
+  PRIVAPP_FOUND=false
+  for BASE in \
+    "system_extracted/priv-app" \
+    "system_extracted/system/priv-app" \
+    "system_extracted/system_a/priv-app" \
+    "system_extracted/system/system/priv-app" \
+    "system_extracted/system_a/system/priv-app"; do
+    if [ -d "$BASE" ]; then
+      for ITEM in "$BASE/"*/; do
+        [ -d "$ITEM" ] || continue
+        NAME=$(basename "$ITEM")
+        SIZE=$(get_size "$ITEM")
+        if is_target "$NAME" "$PRIVAPP_FOLDERS"; then
+          printf "    ✓ %-40s %8s\n" "$NAME" "$SIZE"
+          mkdir -p "output/Apps/system/priv-app"
+          cp -r "$ITEM" "output/Apps/system/priv-app/$NAME"
+        else
+          printf "      %-40s %8s\n" "$NAME" "$SIZE"
+        fi
+      done
+      PRIVAPP_FOUND=true
+      break
+    fi
+  done
+  $PRIVAPP_FOUND || echo "    (empty)"
+  
+  # Also copy any targets not found in full dump (fallbacks)
+  for FOLDER in $PRIVAPP_FOLDERS; do
+    [ -d "output/Apps/system/priv-app/$FOLDER" ] && continue
+    FOUND=false
+    for BASE in \
+      "system_extracted/priv-app/$FOLDER" \
+      "system_extracted/system/priv-app/$FOLDER" \
+      "system_extracted/system_a/priv-app/$FOLDER" \
+      "system_extracted/system/system/priv-app/$FOLDER" \
+      "system_extracted/system_a/system/priv-app/$FOLDER"; do
+      if [ -d "$BASE" ]; then
+        mkdir -p "output/Apps/system/priv-app"
+        cp -r "$BASE" "output/Apps/system/priv-app/$FOLDER"
+        FOUND=true
+        break
+      fi
+    done
+    if ! $FOUND && [ "$FOLDER" = "PhotoEditor_AIFull" ]; then
+      for BASE in \
+        "system_extracted/priv-app/PhotoEditor_Full" \
+        "system_extracted/system/priv-app/PhotoEditor_Full" \
+        "system_extracted/system_a/priv-app/PhotoEditor_Full" \
+        "system_extracted/system/system/priv-app/PhotoEditor_Full" \
+        "system_extracted/system_a/system/priv-app/PhotoEditor_Full"; do
+        if [ -d "$BASE" ]; then
+          mkdir -p "output/Apps/system/priv-app"
+          cp -r "$BASE" "output/Apps/system/priv-app/PhotoEditor_AIFull"
+          break
+        fi
+      done
+    fi
+  done
+else
+  for FOLDER in $PRIVAPP_FOLDERS; do
+    FOUND=false
+    for BASE in \
+      "system_extracted/priv-app/$FOLDER" \
+      "system_extracted/system/priv-app/$FOLDER" \
+      "system_extracted/system_a/priv-app/$FOLDER" \
+      "system_extracted/system/system/priv-app/$FOLDER" \
+      "system_extracted/system_a/system/priv-app/$FOLDER"; do
+      if [ -d "$BASE" ]; then
+        mkdir -p "output/Apps/system/priv-app"
+        cp -r "$BASE" "output/Apps/system/priv-app/$FOLDER"
+        echo "    ✓ priv-app/$FOLDER"
+        FOUND=true
+        break
+      fi
+    done
+    if ! $FOUND && [ "$FOLDER" = "PhotoEditor_AIFull" ]; then
+      for BASE in \
+        "system_extracted/priv-app/PhotoEditor_Full" \
+        "system_extracted/system/priv-app/PhotoEditor_Full" \
+        "system_extracted/system_a/priv-app/PhotoEditor_Full" \
+        "system_extracted/system/system/priv-app/PhotoEditor_Full" \
+        "system_extracted/system_a/system/priv-app/PhotoEditor_Full"; do
+        if [ -d "$BASE" ]; then
+          mkdir -p "output/Apps/system/priv-app"
+          cp -r "$BASE" "output/Apps/system/priv-app/PhotoEditor_AIFull"
+          echo "    ✓ priv-app/PhotoEditor_AIFull (found as PhotoEditor_Full)"
+          FOUND=true
+          break
+        fi
+      done
+    fi
+    $FOUND || echo "  ❌ $FOLDER not found"
+  done
+fi
+
+# --- etc/ ---
 for FOLDER in $ETC_FOLDERS; do
   FOUND=false
   for BASE in \
@@ -249,7 +369,7 @@ for FOLDER in $ETC_FOLDERS; do
   $FOUND || echo "  ❌ $FOLDER not found"
 done
 
-# Copy media files to Apps/system/media/
+# --- media/ ---
 mkdir -p "output/Apps/system/media"
 for FILE in $MEDIA_FILES; do
   FILE_FOUND=false
@@ -269,7 +389,7 @@ for FILE in $MEDIA_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-# Copy lib64 files to Apps/system/lib64/
+# --- lib64/ ---
 mkdir -p "output/Apps/system/lib64"
 for FILE in $LIB64_FILES; do
   FILE_FOUND=false
@@ -289,7 +409,7 @@ for FILE in $LIB64_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-# Copy framework JARs to Apps/system/framework/
+# --- framework/ ---
 mkdir -p "output/Apps/system/framework"
 for JAR in $FRAMEWORK_JARS; do
   JAR_FOUND=false
