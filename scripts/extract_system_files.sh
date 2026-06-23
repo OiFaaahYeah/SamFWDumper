@@ -108,7 +108,6 @@ tar -xf "$AP_FILE" >/dev/null 2>&1
 rm -f "$AP_FILE"
 echo "✅ Done"
 
-# Helper: extract files from f2fs image via mount
 extract_f2fs() {
   local IMG="$1" OUT_DIR="$2" TARGETS="$3" SINGLE_FILES="$4"
   sudo modprobe f2fs 2>/dev/null || true
