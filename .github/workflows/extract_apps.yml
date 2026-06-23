@@ -32,7 +32,7 @@ on:
         - 'gofile'
         - 'github releases'
       show_all:
-        description: 'Show ALL folders in app & priv-app (not just selected)'
+        description: 'Show ALL folders in app & priv-app (still get only whatu have written in .txt files)'
         type: boolean
         default: false
 
