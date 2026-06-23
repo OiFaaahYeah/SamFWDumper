@@ -1,11 +1,15 @@
 # =============================================================================
-# SamFW Apps Extractor - Extract specific app folders from Samsung firmware
+# SamFWDumper - Automated Samsung Firmware Extraction
 # Copyright (C) 2026 Xiatsuma
 # Licensed under PolyForm Noncommercial License 1.0.0
 # https://polyformproject.org/licenses/noncommercial/1.0.0
+#
+# You may NOT use this file except in compliance with the License.
+# Commercial use, removal of this header, or distribution without attribution
+# is strictly prohibited. For permissions: https://github.com/Xiatsuma
 # =============================================================================
 
-name: Apps Extractor
+name: 3. Special Targeted Extractor
 
 on:
   workflow_dispatch:
@@ -60,11 +64,11 @@ jobs:
             linux-modules-extra-$(uname -r)
 
       - name: Make tools executable
-        run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/extract_apps.sh
+        run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/extract_targeted.sh
 
-      - name: Run Apps Extraction
+      - name: Run Targeted Extraction
         run: |
-          bash scripts/extract_apps.sh \
+          bash scripts/extract_targeted.sh \
             "${{ github.event.inputs.url }}" \
             "${{ github.event.inputs.compression }}" \
             "${{ github.event.inputs.show_all }}"
