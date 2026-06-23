@@ -59,6 +59,118 @@ tar -xf "$AP_FILE" >/dev/null 2>&1
 rm -f "$AP_FILE"
 echo "✅ Done"
 
+# Helper: extract from f2fs image via mount
+extract_f2fs_mount() {
+  local IMG="$1" OUT_DIR="$2"
+  sudo modprobe f2fs 2>/dev/null || true
+  local MNT="/tmp/f2fs_mount_$$"
+  mkdir -p "$MNT"
+  if ! sudo mount -t f2fs -o ro,loop "$IMG" "$MNT" 2>/dev/null; then
+    echo "  ❌ f2fs mount failed"
+    rm -rf "$MNT"
+    return 1
+  fi
+  echo "  ✅ Mounted f2fs successfully"
+
+  # Extract app folders
+  for FOLDER in $APP_FOLDERS; do
+    FOUND=false
+    for SRC_PATH in "$MNT/app/$FOLDER" "$MNT/system/app/$FOLDER"; do
+      if sudo test -d "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/app/$FOLDER"
+        sudo cp -r "$SRC_PATH" "$OUT_DIR/app/" 2>/dev/null
+        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/app/$FOLDER"
+        FOUND=true; break
+      fi
+    done
+    $FOUND || echo "  ⚠️ app/$FOLDER not found"
+  done
+
+  # Extract priv-app folders
+  for FOLDER in $PRIVAPP_FOLDERS; do
+    FOUND=false
+    for SRC_PATH in "$MNT/priv-app/$FOLDER" "$MNT/system/priv-app/$FOLDER"; do
+      if sudo test -d "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/priv-app/$FOLDER"
+        sudo cp -r "$SRC_PATH" "$OUT_DIR/priv-app/" 2>/dev/null
+        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/priv-app/$FOLDER"
+        FOUND=true; break
+      fi
+    done
+    if ! $FOUND && [ "$FOLDER" = "PhotoEditor_AIFull" ]; then
+      for SRC_PATH in "$MNT/priv-app/PhotoEditor_Full" "$MNT/system/priv-app/PhotoEditor_Full"; do
+        if sudo test -d "$SRC_PATH" 2>/dev/null; then
+          mkdir -p "$OUT_DIR/priv-app/PhotoEditor_AIFull"
+          sudo cp -r "$SRC_PATH" "$OUT_DIR/priv-app/PhotoEditor_AIFull" 2>/dev/null
+          sudo chown -R $(id -u):$(id -g) "$OUT_DIR/priv-app/PhotoEditor_AIFull"
+          FOUND=true; break
+        fi
+      done
+    fi
+    $FOUND || echo "  ⚠️ priv-app/$FOLDER not found"
+  done
+
+  # Extract etc folders
+  for FOLDER in $ETC_FOLDERS; do
+    FOUND=false
+    for SRC_PATH in "$MNT/etc/$FOLDER" "$MNT/system/etc/$FOLDER"; do
+      if sudo test -d "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/etc/$FOLDER"
+        sudo cp -r "$SRC_PATH" "$OUT_DIR/etc/" 2>/dev/null
+        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/etc/$FOLDER"
+        FOUND=true; break
+      fi
+    done
+    $FOUND || echo "  ⚠️ etc/$FOLDER not found"
+  done
+
+  # Extract media files
+  for FILE in $MEDIA_FILES; do
+    FILE_FOUND=false
+    for SRC_PATH in "$MNT/media/$FILE" "$MNT/system/media/$FILE"; do
+      if sudo test -f "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/media"
+        sudo cp "$SRC_PATH" "$OUT_DIR/media/$FILE"
+        sudo chown $(id -u):$(id -g) "$OUT_DIR/media/$FILE"
+        FILE_FOUND=true; break
+      fi
+    done
+    $FILE_FOUND || echo "  ⚠️ media/$FILE not found"
+  done
+
+  # Extract lib64 files
+  for FILE in $LIB64_FILES; do
+    FILE_FOUND=false
+    for SRC_PATH in "$MNT/lib64/$FILE" "$MNT/system/lib64/$FILE"; do
+      if sudo test -f "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/lib64"
+        sudo cp "$SRC_PATH" "$OUT_DIR/lib64/$FILE"
+        sudo chown $(id -u):$(id -g) "$OUT_DIR/lib64/$FILE"
+        FILE_FOUND=true; break
+      fi
+    done
+    $FILE_FOUND || echo "  ⚠️ lib64/$FILE not found"
+  done
+
+  # Extract framework JARs
+  for JAR in $FRAMEWORK_JARS; do
+    JAR_FOUND=false
+    for SRC_PATH in "$MNT/framework/$JAR" "$MNT/system/framework/$JAR"; do
+      if sudo test -f "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/framework"
+        sudo cp "$SRC_PATH" "$OUT_DIR/framework/$JAR"
+        sudo chown $(id -u):$(id -g) "$OUT_DIR/framework/$JAR"
+        JAR_FOUND=true; break
+      fi
+    done
+    $JAR_FOUND || echo "  ⚠️ framework/$JAR not found"
+  done
+
+  sudo umount "$MNT"
+  rm -rf "$MNT"
+  return 0
+}
+
 echo ""; echo "[4/6] Getting system.img..."
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
 if [ -n "$SUPER_FILE" ]; then
@@ -90,7 +202,12 @@ fi
 echo ""; echo "[5/6] Extracting system.img..."
 mkdir -p system_extracted output/Apps/system
 
-if tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
+FS_TYPE=$(blkid -o value -s TYPE "$SYSTEM_IMG" 2>/dev/null || file "$SYSTEM_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
+
+if [ "$FS_TYPE" = "f2fs" ]; then
+  echo "  Detected f2fs filesystem - mounting..."
+  extract_f2fs_mount "$SYSTEM_IMG" "system_extracted" || true
+elif tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
   echo "  ✅ Extracted via erofs"
 else
   echo "  erofs failed - trying debugfs..."
