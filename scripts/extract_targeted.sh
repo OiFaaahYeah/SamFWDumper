@@ -33,8 +33,10 @@ APP_FOLDERS=$(cat targets/app.txt 2>/dev/null | tr '\n' ' ')
 PRIVAPP_FOLDERS=$(cat targets/priv-app.txt 2>/dev/null | tr '\n' ' ')
 ETC_FOLDERS=$(cat targets/etc.txt 2>/dev/null | tr '\n' ' ')
 MEDIA_FILES=$(cat targets/media.txt 2>/dev/null | tr '\n' ' ')
+LIB_FILES=$(cat targets/lib.txt 2>/dev/null | tr '\n' ' ')
 LIB64_FILES=$(cat targets/lib64.txt 2>/dev/null | tr '\n' ' ')
 FRAMEWORK_JARS=$(cat targets/framework.txt 2>/dev/null | tr '\n' ' ')
+CAMERADATA_FILES=$(cat targets/cameradata.txt 2>/dev/null | tr '\n' ' ')
 
 echo ""; echo "[1/6] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
@@ -123,6 +125,19 @@ extract_f2fs_mount() {
     $FOUND || echo "  ⚠️ etc/$FOLDER not found"
   done
 
+  for FOLDER in $CAMERADATA_FILES; do
+    FOUND=false
+    for SRC_PATH in "$MNT/cameradata/$FOLDER" "$MNT/system/cameradata/$FOLDER"; do
+      if sudo test -d "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/cameradata/$FOLDER"
+        sudo cp -r "$SRC_PATH" "$OUT_DIR/cameradata/" 2>/dev/null
+        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/cameradata/$FOLDER"
+        FOUND=true; break
+      fi
+    done
+    $FOUND || echo "  ⚠️ cameradata/$FOLDER not found"
+  done
+
   for FILE in $MEDIA_FILES; do
     FILE_FOUND=false
     for SRC_PATH in "$MNT/media/$FILE" "$MNT/system/media/$FILE"; do
@@ -134,6 +149,19 @@ extract_f2fs_mount() {
       fi
     done
     $FILE_FOUND || echo "  ⚠️ media/$FILE not found"
+  done
+
+  for FILE in $LIB_FILES; do
+    FILE_FOUND=false
+    for SRC_PATH in "$MNT/lib/$FILE" "$MNT/system/lib/$FILE"; do
+      if sudo test -f "$SRC_PATH" 2>/dev/null; then
+        mkdir -p "$OUT_DIR/lib"
+        sudo cp "$SRC_PATH" "$OUT_DIR/lib/$FILE"
+        sudo chown $(id -u):$(id -g) "$OUT_DIR/lib/$FILE"
+        FILE_FOUND=true; break
+      fi
+    done
+    $FILE_FOUND || echo "  ⚠️ lib/$FILE not found"
   done
 
   for FILE in $LIB64_FILES; do
@@ -245,12 +273,32 @@ else
       fi
     done
   done
+
+  for FOLDER in $CAMERADATA_FILES; do
+    for TARGET in "cameradata/$FOLDER" "system/cameradata/$FOLDER"; do
+      if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
+        mkdir -p "system_extracted/cameradata/$FOLDER"
+        debugfs -R "rdump $TARGET system_extracted/cameradata/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
   
   for FILE in $MEDIA_FILES; do
     for SRC in "media/$FILE" "system/media/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
         mkdir -p "system_extracted/media"
         debugfs -R "dump $SRC system_extracted/media/$FILE" "$SYSTEM_IMG" 2>/dev/null
+        break
+      fi
+    done
+  done
+
+  for FILE in $LIB_FILES; do
+    for SRC in "lib/$FILE" "system/lib/$FILE"; do
+      if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
+        mkdir -p "system_extracted/lib"
+        debugfs -R "dump $SRC system_extracted/lib/$FILE" "$SYSTEM_IMG" 2>/dev/null
         break
       fi
     done
@@ -470,6 +518,25 @@ for FOLDER in $ETC_FOLDERS; do
   $FOUND || echo "  ❌ $FOLDER not found"
 done
 
+for FOLDER in $CAMERADATA_FILES; do
+  FOUND=false
+  for BASE in \
+    "system_extracted/cameradata/$FOLDER" \
+    "system_extracted/system/cameradata/$FOLDER" \
+    "system_extracted/system_a/cameradata/$FOLDER" \
+    "system_extracted/system/system/cameradata/$FOLDER" \
+    "system_extracted/system_a/system/cameradata/$FOLDER"; do
+    if [ -d "$BASE" ]; then
+      mkdir -p "output/Apps/system/cameradata"
+      cp -r "$BASE" "output/Apps/system/cameradata/$FOLDER"
+      echo "    ✓ cameradata/$FOLDER"
+      FOUND=true
+      break
+    fi
+  done
+  $FOUND || echo "  ❌ $FOLDER not found"
+done
+
 mkdir -p "output/Apps/system/media"
 for FILE in $MEDIA_FILES; do
   FILE_FOUND=false
@@ -482,6 +549,25 @@ for FILE in $MEDIA_FILES; do
     if [ -f "$BASE" ]; then
       cp "$BASE" "output/Apps/system/media/$FILE"
       echo "    ✓ media/$FILE"
+      FILE_FOUND=true
+      break
+    fi
+  done
+  $FILE_FOUND || echo "  ❌ $FILE not found"
+done
+
+mkdir -p "output/Apps/system/lib"
+for FILE in $LIB_FILES; do
+  FILE_FOUND=false
+  for BASE in \
+    "system_extracted/lib/$FILE" \
+    "system_extracted/system/lib/$FILE" \
+    "system_extracted/system_a/lib/$FILE" \
+    "system_extracted/system/system/lib/$FILE" \
+    "system_extracted/system_a/system/lib/$FILE"; do
+    if [ -f "$BASE" ]; then
+      cp "$BASE" "output/Apps/system/lib/$FILE"
+      echo "    ✓ lib/$FILE"
       FILE_FOUND=true
       break
     fi
