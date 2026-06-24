@@ -1,2 +1,1 @@
-libobjectcapture.arcsoft.so
-libobjectcapture_jni.arcsoft.so
+
