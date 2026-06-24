@@ -537,7 +537,6 @@ for FOLDER in $CAMERADATA_FILES; do
   $FOUND || echo "  ❌ $FOLDER not found"
 done
 
-mkdir -p "output/Apps/system/media"
 for FILE in $MEDIA_FILES; do
   FILE_FOUND=false
   for BASE in \
@@ -547,6 +546,7 @@ for FILE in $MEDIA_FILES; do
     "system_extracted/system/system/media/$FILE" \
     "system_extracted/system_a/system/media/$FILE"; do
     if [ -f "$BASE" ]; then
+      mkdir -p "output/Apps/system/media"
       cp "$BASE" "output/Apps/system/media/$FILE"
       echo "    ✓ media/$FILE"
       FILE_FOUND=true
@@ -556,7 +556,6 @@ for FILE in $MEDIA_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-mkdir -p "output/Apps/system/lib"
 for FILE in $LIB_FILES; do
   FILE_FOUND=false
   for BASE in \
@@ -566,6 +565,7 @@ for FILE in $LIB_FILES; do
     "system_extracted/system/system/lib/$FILE" \
     "system_extracted/system_a/system/lib/$FILE"; do
     if [ -f "$BASE" ]; then
+      mkdir -p "output/Apps/system/lib"
       cp "$BASE" "output/Apps/system/lib/$FILE"
       echo "    ✓ lib/$FILE"
       FILE_FOUND=true
@@ -575,7 +575,6 @@ for FILE in $LIB_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-mkdir -p "output/Apps/system/lib64"
 for FILE in $LIB64_FILES; do
   FILE_FOUND=false
   for BASE in \
@@ -585,6 +584,7 @@ for FILE in $LIB64_FILES; do
     "system_extracted/system/system/lib64/$FILE" \
     "system_extracted/system_a/system/lib64/$FILE"; do
     if [ -f "$BASE" ]; then
+      mkdir -p "output/Apps/system/lib64"
       cp "$BASE" "output/Apps/system/lib64/$FILE"
       echo "    ✓ lib64/$FILE"
       FILE_FOUND=true
@@ -594,7 +594,6 @@ for FILE in $LIB64_FILES; do
   $FILE_FOUND || echo "  ❌ $FILE not found"
 done
 
-mkdir -p "output/Apps/system/framework"
 for JAR in $FRAMEWORK_JARS; do
   JAR_FOUND=false
   for BASE in \
@@ -604,6 +603,7 @@ for JAR in $FRAMEWORK_JARS; do
     "system_extracted/system/system/framework/$JAR" \
     "system_extracted/system_a/system/framework/$JAR"; do
     if [ -f "$BASE" ]; then
+      mkdir -p "output/Apps/system/framework"
       cp "$BASE" "output/Apps/system/framework/$JAR"
       echo "    ✓ framework/$JAR"
       JAR_FOUND=true
