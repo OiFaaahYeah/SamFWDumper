@@ -40,7 +40,7 @@ on:
         type: boolean
         default: false
       output_name:
-        description: 'Output folder/zip name (default: Apps)'
+        description: 'Output .zip name (default: Apps)'
         required: false
         default: 'Apps'
 
