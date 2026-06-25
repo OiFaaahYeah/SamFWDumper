@@ -39,6 +39,10 @@ on:
         description: 'Show ALL folders in app & priv-app'
         type: boolean
         default: false
+      output_name:
+        description: 'Output folder/zip name (default: Apps)'
+        required: false
+        default: 'Apps'
 
 jobs:
   extract:
@@ -71,7 +75,8 @@ jobs:
           bash scripts/extract_targeted.sh \
             "${{ github.event.inputs.url }}" \
             "${{ github.event.inputs.compression }}" \
-            "${{ github.event.inputs.show_all }}"
+            "${{ github.event.inputs.show_all }}" \
+            "${{ github.event.inputs.output_name }}"
 
       - name: Get Firmware Info
         id: fwinfo
