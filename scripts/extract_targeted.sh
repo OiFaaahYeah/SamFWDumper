@@ -91,9 +91,7 @@ resolve_ab_path() {
 
 extract_partition_img() {
   local IMG="$1" OUT_DIR="$2" PART_NAME="$3"
-  
   [ ! -f "$IMG" ] && return 1
-  
   if [[ "$IMG" == *.lz4 ]]; then
     lz4 -d "$IMG" "${IMG%.lz4}" 2>/dev/null
     IMG="${IMG%.lz4}"
@@ -102,9 +100,7 @@ extract_partition_img() {
     simg2img "$IMG" "${IMG}.raw" 2>/dev/null || tools/android-tools/simg2img "$IMG" "${IMG}.raw"
     IMG="${IMG}.raw"
   fi
-
   FS_TYPE=$(blkid -o value -s TYPE "$IMG" 2>/dev/null || file "$IMG" | grep -o 'f2fs\|erofs\|ext[234]')
-  
   if [ "$FS_TYPE" = "f2fs" ]; then
     extract_f2fs_partition "$IMG" "$OUT_DIR" "$PART_NAME" || return 1
   elif tools/erofs-utils/extract.erofs -i "$IMG" -x -o "$OUT_DIR/" >/dev/null 2>&1; then
@@ -263,7 +259,7 @@ extract_f2fs_mount() {
 }
 
 echo ""; echo "[4/7] Extracting partitions..."
-mkdir -p super_dump partitions_extracted output/$OUTPUT_NAME
+mkdir -p super_dump partitions_extracted "output/$OUTPUT_NAME"
 
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
 HAS_SUPER=false
@@ -282,7 +278,7 @@ fi
 
 NEEDED_PARTITIONS="system"
 if [ -n "$ANY_PARTITION" ]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     PART=$(echo "$line" | cut -d'/' -f1)
     [ -n "$PART" ] && NEEDED_PARTITIONS="$NEEDED_PARTITIONS $PART"
   done <<< "$ANY_PARTITION"
@@ -292,13 +288,11 @@ NEEDED_PARTITIONS=$(echo "$NEEDED_PARTITIONS" | tr ' ' '\n' | sort -u | tr '\n' 
 for PART in $NEEDED_PARTITIONS; do
   PART_DIR="partitions_extracted/$PART"
   mkdir -p "$PART_DIR"
-  
   PART_IMG=""
   if $HAS_SUPER; then
     PART_IMG=$(find super_dump -name "${PART}.img" -o -name "${PART}_a.img" -o -name "${PART}_b.img" | head -n 1)
   fi
   [ -z "$PART_IMG" ] && PART_IMG=$(find_partition_img "$PART")
-  
   if [ -n "$PART_IMG" ] && [ -f "$PART_IMG" ]; then
     echo "  Extracting $PART ($(basename $PART_IMG))..."
     extract_partition_img "$PART_IMG" "$PART_DIR" "$PART" && echo "    ✓ $PART" || echo "    ⚠️ $PART extraction failed"
@@ -335,7 +329,6 @@ mkdir -p system_extracted
 
 if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
   FS_TYPE=$(blkid -o value -s TYPE "$SYSTEM_IMG" 2>/dev/null || file "$SYSTEM_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
-
   if [ "$FS_TYPE" = "f2fs" ]; then
     echo "  Detected f2fs filesystem - mounting..."
     extract_f2fs_mount "$SYSTEM_IMG" "system_extracted" || true
@@ -343,7 +336,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
     echo "  ✅ Extracted via erofs"
   else
     echo "  erofs failed - trying debugfs..."
-    
     for FOLDER in $APP_FOLDERS; do
       for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
         if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -353,7 +345,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-    
     for FOLDER in $PRIVAPP_FOLDERS; do
       for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
         if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -363,7 +354,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-    
     for TARGET in "priv-app/PhotoEditor_Full" "system/priv-app/PhotoEditor_Full"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
         mkdir -p "system_extracted/priv-app/PhotoEditor_AIFull"
@@ -371,7 +361,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         break
       fi
     done
-    
     for FOLDER in $ETC_FOLDERS; do
       for TARGET in "etc/$FOLDER" "system/etc/$FOLDER"; do
         if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -381,7 +370,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-
     for FOLDER in $CAMERADATA_FILES; do
       for TARGET in "cameradata/$FOLDER" "system/cameradata/$FOLDER"; do
         if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -391,7 +379,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-    
     for FILE in $MEDIA_FILES; do
       for SRC in "media/$FILE" "system/media/$FILE"; do
         if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -401,7 +388,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-
     for FILE in $LIB_FILES; do
       for SRC in "lib/$FILE" "system/lib/$FILE"; do
         if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -411,7 +397,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-    
     for FILE in $LIB64_FILES; do
       for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
         if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -421,7 +406,6 @@ if [ -n "$SYSTEM_IMG" ] && [ -f "$SYSTEM_IMG" ]; then
         fi
       done
     done
-    
     for JAR in $FRAMEWORK_JARS; do
       for SRC in "framework/$JAR" "system/framework/$JAR"; do
         if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -436,19 +420,17 @@ fi
 
 echo ""; echo "[6/7] Processing any_partition.txt entries..."
 if [ -n "$ANY_PARTITION" ]; then
-  while IFS= read -r line; do
+  while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     PART=$(echo "$line" | cut -d'/' -f1)
     REST=$(echo "$line" | cut -d'/' -f2-)
     PART_DIR="partitions_extracted/$PART"
     DEST="output/$OUTPUT_NAME/$line"
-    
     if [ "$PART" = "system" ] && [ -d "system_extracted" ] && [ "$(ls -A system_extracted 2>/dev/null)" ]; then
       SRC=$(resolve_ab_path "system_extracted" "$REST" "$PART")
     else
       SRC=$(resolve_ab_path "$PART_DIR" "$REST" "$PART")
     fi
-    
     if [ -n "$SRC" ] && [ -e "$SRC" ]; then
       mkdir -p "$(dirname "$DEST")"
       cp -r "$SRC" "$DEST"
@@ -572,7 +554,6 @@ if [ "$SHOW_ALL" = "true" ]; then
     fi
   done
   $PRIVAPP_FOUND || echo "    (empty)"
-  
   for FOLDER in $PRIVAPP_FOLDERS; do
     [ -d "$SYS_OUT/priv-app/$FOLDER" ] && continue
     FOUND=false
