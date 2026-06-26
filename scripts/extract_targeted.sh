@@ -219,10 +219,10 @@ if [ -n "$SUPER_FILE" ]; then
     simg2img "$SUPER_FILE" "super.raw.img" 2>/dev/null || tools/android-tools/simg2img "$SUPER_FILE" "super.raw.img"
     SUPER_FILE="super.raw.img"
   fi
-  echo "  Dynamic partitions:"
-  tools/android-tools/lpunpack "$SUPER_FILE" super_dump 2>/dev/null
+  echo "  Contents:"
+  tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1
   for img in super_dump/*.img; do
-    [ -f "$img" ] && echo "    ✓ $(basename "$img")"
+    [ -f "$img" ] && echo "    $(basename "$img")"
   done
   SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
 else
