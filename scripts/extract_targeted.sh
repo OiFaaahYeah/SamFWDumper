@@ -61,11 +61,11 @@ echo "✅ Done"
 echo ""; echo "[3/6] Extracting AP..."
 AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
 [ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
-echo "  AP File: $(basename "$AP_FILE")"
+echo "  Extracting: $(basename "$AP_FILE")"
 tar -xf "$AP_FILE" >/dev/null 2>&1
 echo "  Contents:"
-for IMG in *.img *.img.lz4 *.bin *.bin.lz4 *.elf 2>/dev/null; do
-  [ -f "$IMG" ] && echo "    $IMG"
+for file in *.img *.img.lz4 *.bin *.bin.lz4 *.elf 2>/dev/null; do
+  [ -f "$file" ] && echo "    $file"
 done
 rm -f "$AP_FILE"
 echo "✅ Done"
@@ -221,8 +221,8 @@ if [ -n "$SUPER_FILE" ]; then
   fi
   echo "  Dynamic partitions:"
   tools/android-tools/lpunpack "$SUPER_FILE" super_dump 2>/dev/null
-  for PART_IMG in super_dump/*.img; do
-    [ -f "$PART_IMG" ] && echo "    $(basename "$PART_IMG")"
+  for img in super_dump/*.img; do
+    [ -f "$img" ] && echo "    ✓ $(basename "$img")"
   done
   SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
 else
