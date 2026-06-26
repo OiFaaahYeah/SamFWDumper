@@ -61,7 +61,12 @@ echo "✅ Done"
 echo ""; echo "[3/6] Extracting AP..."
 AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
 [ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
+echo "  AP File: $(basename "$AP_FILE")"
 tar -xf "$AP_FILE" >/dev/null 2>&1
+echo "  Contents:"
+for IMG in *.img *.img.lz4 *.bin *.bin.lz4 *.elf 2>/dev/null; do
+  [ -f "$IMG" ] && echo "    $IMG"
+done
 rm -f "$AP_FILE"
 echo "✅ Done"
 
@@ -199,19 +204,26 @@ extract_f2fs_mount() {
   return 0
 }
 
-echo ""; echo "[4/6] Getting system.img..."
+echo ""; echo "[4/6] Extracting super.img..."
+mkdir -p super_dump "output/$OUTPUT_NAME/system"
+
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
 if [ -n "$SUPER_FILE" ]; then
   if [[ "$SUPER_FILE" == *.lz4 ]]; then
+    echo "  Decompressing LZ4..."
     lz4 -d "$SUPER_FILE" "super.img" 2>/dev/null
     SUPER_FILE="super.img"
   fi
   if file "$SUPER_FILE" 2>/dev/null | grep -q "sparse"; then
+    echo "  Converting sparse image..."
     simg2img "$SUPER_FILE" "super.raw.img" 2>/dev/null || tools/android-tools/simg2img "$SUPER_FILE" "super.raw.img"
     SUPER_FILE="super.raw.img"
   fi
-  mkdir -p super_dump
+  echo "  Dynamic partitions:"
   tools/android-tools/lpunpack "$SUPER_FILE" super_dump 2>/dev/null
+  for PART_IMG in super_dump/*.img; do
+    [ -f "$PART_IMG" ] && echo "    $(basename "$PART_IMG")"
+  done
   SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
 else
   SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
@@ -226,9 +238,10 @@ else
 fi
 
 [ -z "$SYSTEM_IMG" ] || [ ! -f "$SYSTEM_IMG" ] && { echo "❌ system.img not found"; exit 1; }
+echo "✅ Done"
 
 echo ""; echo "[5/6] Extracting system.img..."
-mkdir -p system_extracted "output/$OUTPUT_NAME/system"
+mkdir -p system_extracted
 
 FS_TYPE=$(blkid -o value -s TYPE "$SYSTEM_IMG" 2>/dev/null || file "$SYSTEM_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
 
