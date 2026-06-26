@@ -1,3 +1,0 @@
-vendor/firmware/tsp_goodix
-product/priv-app/GooglePartnerSetup
-system_ext/framework/mediatek-ims-base.jar
