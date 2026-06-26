@@ -64,7 +64,7 @@ AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
 echo "  Extracting: $(basename "$AP_FILE")"
 tar -xf "$AP_FILE" >/dev/null 2>&1
 echo "  Contents:"
-for file in *.img *.img.lz4 *.bin *.bin.lz4 *.elf 2>/dev/null; do
+for file in *.img *.img.lz4 *.bin *.bin.lz4 *.elf; do
   [ -f "$file" ] && echo "    $file"
 done
 rm -f "$AP_FILE"
