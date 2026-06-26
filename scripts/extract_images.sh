@@ -12,7 +12,7 @@
 set -e
 
 echo "═══════════════════════════════════════"
-echo "   Universal Samsung Firmware Extractor"
+echo "   Samsung Images Extractor"
 echo "═══════════════════════════════════════"
 
 URL="$1"
@@ -79,13 +79,16 @@ done
 $NEED_SUPER && EXTRACT_ARGS+=("*super.img*")
 
 tar --no-anchored --wildcards -xf "$AP_FILE" "${EXTRACT_ARGS[@]}" 2>/dev/null || tar -xf "$AP_FILE" >/dev/null 2>&1
+echo "  Contents:"
+for file in *.img *.img.lz4; do
+  [ -f "$file" ] && echo "    $file"
+done
 rm -f "$AP_FILE"
 echo "✅ Done"
 
 echo ""; echo "[4/5] Extracting partitions..."
 mkdir -p processed
 
-echo "  Processing individual partitions..."
 for PART in $SELECTED_PARTITIONS; do
   [ -f "processed/${PART}.img.xz" ] && continue
   [ -f "processed/${PART}_a.img.xz" ] && continue
@@ -93,8 +96,6 @@ for PART in $SELECTED_PARTITIONS; do
 
   FILE=$(find . -maxdepth 1 \( -name "${PART}.img.lz4" -o -name "${PART}.img" -o -name "${PART}_a.img.lz4" -o -name "${PART}_a.img" -o -name "${PART}_b.img.lz4" -o -name "${PART}_b.img" \) | head -n 1)
   if [ -n "$FILE" ] && [ -f "$FILE" ]; then
-    echo "    ✓ Found: $(basename "$FILE")"
-    
     if [[ "$FILE" == *.lz4 ]]; then
       lz4 -d "$FILE" "${FILE%.lz4}" 2>/dev/null || true
       FILE="${FILE%.lz4}"
@@ -103,8 +104,10 @@ for PART in $SELECTED_PARTITIONS; do
     BASENAME=$(basename "$FILE")
     if xz $XZ_FLAGS -T0 "$FILE" 2>/dev/null; then
       mv "${FILE}.xz" "processed/${BASENAME}.xz"
+      echo "    $BASENAME.xz"
     else
       cp "$FILE" "processed/${BASENAME}"
+      echo "    $BASENAME"
     fi
   fi
 done
@@ -132,27 +135,27 @@ if $NEED_SUPER && [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
     [ -f "super.raw.img" ] && SUPER_FILE="super.raw.img"
   fi
   
-  echo "    Extracting dynamic partitions..."
+  echo "    Contents:"
   mkdir -p super_dump
   
   if [ -f "tools/android-tools/lpunpack" ]; then
-    tools/android-tools/lpunpack "$SUPER_FILE" super_dump 2>/dev/null || { echo "      ❌ lpunpack failed"; exit 1; }
+    tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1 || { echo "      ❌ lpunpack failed"; exit 1; }
   else
     echo "      ❌ lpunpack not found"
     exit 1
   fi
   
-  echo "    Compressing ONLY selected partitions..."
   for PART in $SELECTED_PARTITIONS; do
     for SUFFIX in "_a" "" "_b"; do
       IMG_FILE="super_dump/${PART}${SUFFIX}.img"
       if [ -f "$IMG_FILE" ]; then
         BASENAME="${PART}${SUFFIX}.img"
-        echo "      ✓ $BASENAME"
         if xz $XZ_FLAGS -T0 "$IMG_FILE" 2>/dev/null; then
           mv "${IMG_FILE}.xz" "processed/${BASENAME}.xz"
+          echo "    ${BASENAME}.xz"
         else
           cp "$IMG_FILE" "processed/${BASENAME}"
+          echo "    $BASENAME"
         fi
         break
       fi
