@@ -77,11 +77,15 @@ find_partition_img() {
 }
 
 resolve_ab_path() {
-  local BASE_DIR="$1" REL_PATH="$2"
-  for PREFIX in "" "system_a/" "system_b/" "system/"; do
-    local FULL="$BASE_DIR/${PREFIX}${REL_PATH}"
-    if [ -e "$FULL" ]; then echo "$FULL"; return 0; fi
-  done
+  local BASE_DIR="$1" REL_PATH="$2" PART="$3"
+  local FULL="$BASE_DIR/$REL_PATH"
+  [ -e "$FULL" ] && echo "$FULL" && return 0
+  if [ "$PART" = "system" ]; then
+    for PREFIX in "system_a/" "system_b/" "system/"; do
+      FULL="$BASE_DIR/${PREFIX}${REL_PATH}"
+      [ -e "$FULL" ] && echo "$FULL" && return 0
+    done
+  fi
   return 1
 }
 
@@ -305,7 +309,7 @@ done
 
 SYSTEM_DIR="partitions_extracted/system"
 SYSTEM_IMG=""
-if [ -f "$SYSTEM_DIR" ]; then
+if [ -d "$SYSTEM_DIR" ] && [ "$(ls -A "$SYSTEM_DIR" 2>/dev/null)" ]; then
   :
 else
   SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
@@ -437,18 +441,22 @@ if [ -n "$ANY_PARTITION" ]; then
     PART=$(echo "$line" | cut -d'/' -f1)
     REST=$(echo "$line" | cut -d'/' -f2-)
     PART_DIR="partitions_extracted/$PART"
-    DEST="$OUTPUT_NAME/$line"
+    DEST="output/$OUTPUT_NAME/$line"
     
-    if [ "$PART" = "system" ] && [ -d "system_extracted" ]; then
-      SRC=$(resolve_ab_path "system_extracted" "$REST")
+    if [ "$PART" = "system" ] && [ -d "system_extracted" ] && [ "$(ls -A system_extracted 2>/dev/null)" ]; then
+      SRC=$(resolve_ab_path "system_extracted" "$REST" "$PART")
     else
-      SRC=$(resolve_ab_path "$PART_DIR" "$REST")
+      SRC=$(resolve_ab_path "$PART_DIR" "$REST" "$PART")
     fi
     
     if [ -n "$SRC" ] && [ -e "$SRC" ]; then
       mkdir -p "$(dirname "$DEST")"
       cp -r "$SRC" "$DEST"
-      SIZE=$(du -sh "$SRC" 2>/dev/null | cut -f1)
+      if [ -d "$SRC" ]; then
+        SIZE=$(du -sh "$SRC" 2>/dev/null | cut -f1)
+      else
+        SIZE=$(stat -c%s "$SRC" 2>/dev/null | numfmt --to=iec 2>/dev/null || echo "?")
+      fi
       echo "    ✓ $line ($SIZE)"
     else
       echo "    ❌ $line not found"
@@ -485,7 +493,7 @@ is_target() {
 }
 
 SYSTEM_BASE="system_extracted"
-SYS_OUT="$OUTPUT_NAME/system"
+SYS_OUT="output/$OUTPUT_NAME/system"
 
 if [ "$SHOW_ALL" = "true" ]; then
   echo ""
