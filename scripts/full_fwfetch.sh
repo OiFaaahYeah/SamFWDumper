@@ -11,10 +11,14 @@
 # =============================================================================
 set -e
 
+echo "═══════════════════════════════════════"
+echo "   Samsung Full Firmware Fetcher"
+echo "═══════════════════════════════════════"
+
 URL="$1"
 [ -z "$URL" ] && { echo "❌ No URL provided"; exit 1; }
 
-echo "Downloading..."
+echo ""; echo "[1/2] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
 
 ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
@@ -29,4 +33,6 @@ echo "$CSC_CODE" > csc_code.txt
 echo "$AP_CODE" > ap_code.txt
 echo "Firmware: $AP_CODE | CSC: $CSC_CODE"
 
+echo ""; echo "[2/2] Uploading..."
 bash upload_gofile.sh "$ZIP_FILE"
+echo "✅ Done"
