@@ -12,7 +12,7 @@
 set -e
 
 echo "═══════════════════════════════════════"
-echo "   Universal Samsung Firmware Extractor"
+echo "   Samsung System Files Extractor"
 echo "═══════════════════════════════════════"
 
 URL="$1"
@@ -104,7 +104,12 @@ fi
 echo ""; echo "[4/8] Extracting AP..."
 AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
 [ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
+echo "  Extracting: $(basename "$AP_FILE")"
 tar -xf "$AP_FILE" >/dev/null 2>&1
+echo "  Contents:"
+for file in *.img *.img.lz4; do
+  [ -f "$file" ] && echo "    $file"
+done
 rm -f "$AP_FILE"
 echo "✅ Done"
 
@@ -154,19 +159,25 @@ extract_f2fs() {
   return 0
 }
 
-echo ""; echo "[5/8] Getting system.img and product.img..."
+echo ""; echo "[5/8] Extracting super.img..."
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
 if [ -n "$SUPER_FILE" ]; then
   if [[ "$SUPER_FILE" == *.lz4 ]]; then
+    echo "  Decompressing LZ4..."
     lz4 -d "$SUPER_FILE" "super.img" 2>/dev/null
     SUPER_FILE="super.img"
   fi
   if file "$SUPER_FILE" 2>/dev/null | grep -q "sparse"; then
+    echo "  Converting sparse image..."
     simg2img "$SUPER_FILE" "super.raw.img" 2>/dev/null || tools/android-tools/simg2img "$SUPER_FILE" "super.raw.img"
     SUPER_FILE="super.raw.img"
   fi
+  echo "  Contents:"
   mkdir -p super_dump
-  tools/android-tools/lpunpack "$SUPER_FILE" super_dump 2>/dev/null
+  tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1
+  for img in super_dump/*.img; do
+    [ -f "$img" ] && echo "    $(basename "$img")"
+  done
 
   if [ "$WANT_SUPER_CONFIG" = "true" ]; then
     if [ -d "super_dump/configs" ]; then
@@ -204,6 +215,7 @@ else
     PRODUCT_IMG="product_unsparse.img"
   fi
 fi
+echo "✅ Done"
 
 if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
   echo ""; echo "[6/8] Extracting framework RRO APK..."
