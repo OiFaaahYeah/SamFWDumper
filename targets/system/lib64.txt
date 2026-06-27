@@ -3,3 +3,4 @@ vendor.samsung.hardware.vibrator@2.1.so
 libSurfaceFlingerProp.so
 libSAG_VM_Energy_v300.so
 extractors
+hw
