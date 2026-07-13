@@ -104,28 +104,46 @@ extract_f2fs() {
       [ "$TARGET" = "$SF" ] && IS_FILE=true && break
     done
     if $IS_FILE; then
-      FOUND=false
+      BEST_SRC=""
+      BEST_SIZE=0
       for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
         if sudo test -f "$SRC_PATH" 2>/dev/null; then
-          mkdir -p "$OUT_DIR/$(dirname "$TARGET")"
-          sudo cp "$SRC_PATH" "$OUT_DIR/$TARGET"
-          sudo chown $(id -u):$(id -g) "$OUT_DIR/$TARGET"
-          FOUND=true; break
+          local SZ=$(sudo stat -c%s "$SRC_PATH" 2>/dev/null || echo 0)
+          if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+            BEST_SIZE=$SZ
+            BEST_SRC="$SRC_PATH"
+          fi
         fi
       done
-      $FOUND || echo "  ⚠️ $TARGET not found"
+      if [ -n "$BEST_SRC" ]; then
+        mkdir -p "$OUT_DIR/$(dirname "$TARGET")"
+        sudo cp "$BEST_SRC" "$OUT_DIR/$TARGET"
+        sudo chown $(id -u):$(id -g) "$OUT_DIR/$TARGET"
+        echo "    ✓ $TARGET ($(numfmt --to=iec $BEST_SIZE))"
+      else
+        echo "  ⚠️ $TARGET not found"
+      fi
     else
-      FOUND=false
+      BEST_SRC=""
+      BEST_SIZE=0
       local DEST="$OUT_DIR/$(dirname "$TARGET")"
       mkdir -p "$DEST"
       for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
         if sudo test -d "$SRC_PATH" 2>/dev/null; then
-          sudo cp -r "$SRC_PATH" "$DEST/" 2>/dev/null
-          sudo chown -R $(id -u):$(id -g) "$DEST/$(basename "$TARGET")"
-          FOUND=true; break
+          local SZ=$(sudo du -sb "$SRC_PATH" 2>/dev/null | cut -f1 || echo 0)
+          if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+            BEST_SIZE=$SZ
+            BEST_SRC="$SRC_PATH"
+          fi
         fi
       done
-      $FOUND || echo "  ⚠️ $TARGET not found"
+      if [ -n "$BEST_SRC" ]; then
+        sudo cp -r "$BEST_SRC" "$DEST/" 2>/dev/null
+        sudo chown -R $(id -u):$(id -g) "$DEST/$(basename "$TARGET")"
+        echo "    ✓ $TARGET ($(numfmt --to=iec $BEST_SIZE))"
+      else
+        echo "  ⚠️ $TARGET not found"
+      fi
     fi
   done
   sudo umount "$MNT"
@@ -230,8 +248,8 @@ if [ -n "$SUPER_FILE" ]; then
     printf "  │ %-15s → %-6s (%s)\n" "$PART_NAME" "$PART_FS" "$PART_SIZE"
 
     case "$PART_NAME" in
-      system|system_a) SYSTEM_IMG="$img"; SYSTEM_FS="$PART_FS" ;;
-      product|product_a) PRODUCT_IMG="$img"; PRODUCT_FS="$PART_FS" ;;
+      system|system_a|system_b) SYSTEM_IMG="$img"; SYSTEM_FS="$PART_FS" ;;
+      product|product_a|product_b) PRODUCT_IMG="$img"; PRODUCT_FS="$PART_FS" ;;
     esac
   done
 
@@ -309,7 +327,7 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
       tools/erofs-utils/extract.erofs -i "$PRODUCT_IMG" -x -o product_extracted/ >/dev/null 2>&1
     else
       echo "  Extracting ext4 product via debugfs..."
-      for SRC_PATH in "overlay" "product/overlay"; do
+      for SRC_PATH in "product/overlay" "overlay"; do
         if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
           mkdir -p "product_extracted/overlay"
           debugfs -R "rdump $SRC_PATH product_extracted/overlay" "$PRODUCT_IMG" 2>/dev/null
@@ -326,8 +344,9 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
         "product_extracted/product_b/overlay" \
         "product_extracted/product/overlay" \
         "product_extracted/overlay" \
-        "product_extracted/system/product/overlay"; do
-        APK_SRC=$(find "$BASE" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
+        "product_extracted/system/product/overlay" \
+        "product_extracted"; do
+        APK_SRC=$(find "$BASE" -maxdepth 3 -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
         if [ -n "$APK_SRC" ]; then
           cp "$APK_SRC" "output/$(basename "$APK_SRC")"
           echo "    ✓ $(basename "$APK_SRC")"
@@ -378,7 +397,7 @@ else
       done
       if $IS_FILE; then
         FOUND=false
-        for SRC_PATH in "$TARGET" "system/$TARGET"; do
+        for SRC_PATH in "system/$TARGET" "$TARGET"; do
           if debugfs -R "stat $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
             debugfs -R "dump $SRC_PATH system_extracted/$TARGET" "$SYSTEM_IMG" 2>/dev/null
             FOUND=true
@@ -390,7 +409,7 @@ else
         FOUND=false
         DEST_PARENT="system_extracted/$(dirname "$TARGET")"
         mkdir -p "$DEST_PARENT"
-        for SRC_PATH in "$TARGET" "system/$TARGET"; do
+        for SRC_PATH in "system/$TARGET" "$TARGET"; do
           if debugfs -R "ls $SRC_PATH" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
             debugfs -R "rdump $SRC_PATH $DEST_PARENT" "$SYSTEM_IMG" 2>/dev/null
             FOUND=true
@@ -410,8 +429,10 @@ else
       "system_extracted/priv-app/wallpaper-res" \
       "system_extracted/system/priv-app/wallpaper-res" \
       "system_extracted/system_a/priv-app/wallpaper-res" \
+      "system_extracted/system_b/priv-app/wallpaper-res" \
       "system_extracted/system/system/priv-app/wallpaper-res" \
-      "system_extracted/system_a/system/priv-app/wallpaper-res"; do
+      "system_extracted/system_a/system/priv-app/wallpaper-res" \
+      "system_extracted/system_b/system/priv-app/wallpaper-res"; do
       APK_SRC="$BASE/wallpaper-res.apk"
       if [ -f "$APK_SRC" ]; then
         cp "$APK_SRC" "output/wallpaper-res.apk"
@@ -432,8 +453,11 @@ else
     for BASE in \
       "system_extracted/system" \
       "system_extracted/system_a" \
+      "system_extracted/system_b" \
       "system_extracted/system/system" \
-      "system_extracted/system_a/system"; do
+      "system_extracted/system_a/system" \
+      "system_extracted/system_b/system" \
+      "system_extracted"; do
       SRC="$BASE/$TARGET"
       if [ -e "$SRC" ]; then
         cp -r "$SRC" "output/"
