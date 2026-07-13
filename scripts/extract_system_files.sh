@@ -310,7 +310,7 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
       mkdir -p "$PROD_MNT"
       if sudo mount -t f2fs -o ro,loop "$PRODUCT_IMG" "$PROD_MNT" 2>/dev/null; then
         echo "  ✅ Mounted"
-        APK_SRC=$(sudo find "$PROD_MNT" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
+        APK_SRC=$(sudo find "$PROD_MNT" \( -name "framework-res__*__auto_generated_rro_product.apk" -o -name "framework-res__auto_generated_rro_product.apk" \) 2>/dev/null | head -n 1)
         if [ -n "$APK_SRC" ]; then
           sudo cp "$APK_SRC" "output/$(basename "$APK_SRC")"
           sudo chown $(id -u):$(id -g) "output/$(basename "$APK_SRC")"
@@ -346,7 +346,7 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
         "product_extracted/overlay" \
         "product_extracted/system/product/overlay" \
         "product_extracted"; do
-        APK_SRC=$(find "$BASE" -maxdepth 3 -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
+        APK_SRC=$(find "$BASE" -maxdepth 3 \( -name "framework-res__*__auto_generated_rro_product.apk" -o -name "framework-res__auto_generated_rro_product.apk" \) 2>/dev/null | head -n 1)
         if [ -n "$APK_SRC" ]; then
           cp "$APK_SRC" "output/$(basename "$APK_SRC")"
           echo "    ✓ $(basename "$APK_SRC")"
