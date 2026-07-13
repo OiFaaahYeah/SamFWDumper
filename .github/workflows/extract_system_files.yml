@@ -71,14 +71,6 @@ on:
         description: 'saiv (Samsung AI Vision folder from system)'
         type: boolean
         default: false
-      extract_config:
-        description: 'config (XML feature & permission configs)'
-        type: boolean
-        default: false
-      extract_super_config:
-        description: 'super config (Repack metadata for super.img)'
-        type: boolean
-        default: false
       extract_build_prop:
         description: 'build.prop (Device properties)'
         type: boolean
@@ -136,8 +128,6 @@ jobs:
             "${{ github.event.inputs.extract_media }}" \
             "${{ github.event.inputs.extract_priv_app }}" \
             "${{ github.event.inputs.extract_saiv }}" \
-            "${{ github.event.inputs.extract_config }}" \
-            "${{ github.event.inputs.extract_super_config }}" \
             "${{ github.event.inputs.extract_build_prop }}" \
             "${{ github.event.inputs.extract_framework_rro }}" \
             "${{ github.event.inputs.extract_pit }}" \
