@@ -26,12 +26,10 @@ WANT_LIB64="${8:-false}"
 WANT_MEDIA="${9:-false}"
 WANT_PRIV_APP="${10:-false}"
 WANT_SAIV="${11:-false}"
-WANT_CONFIG="${12:-false}"
-WANT_SUPER_CONFIG="${13:-false}"
-WANT_BUILD_PROP="${14:-false}"
-WANT_FRAMEWORK_RRO="${15:-false}"
-WANT_PIT="${16:-false}"
-WANT_WALLPAPER_RES="${17:-false}"
+WANT_BUILD_PROP="${12:-false}"
+WANT_FRAMEWORK_RRO="${13:-false}"
+WANT_PIT="${14:-false}"
+WANT_WALLPAPER_RES="${15:-false}"
 
 chmod +x tools/android-tools/* tools/erofs-utils/* 2>/dev/null || true
 
@@ -53,14 +51,87 @@ TARGETS=""
 [ "$WANT_MEDIA" = "true" ] && TARGETS="$TARGETS media"
 [ "$WANT_PRIV_APP" = "true" ] && TARGETS="$TARGETS priv-app"
 [ "$WANT_SAIV" = "true" ] && TARGETS="$TARGETS saiv"
-[ "$WANT_CONFIG" = "true" ] && TARGETS="$TARGETS config"
 [ "$WANT_BUILD_PROP" = "true" ] && TARGETS="$TARGETS build.prop"
 TARGETS="${TARGETS# }"
 
-if [ -z "$TARGETS" ] && [ "$WANT_SUPER_CONFIG" != "true" ] && [ "$WANT_FRAMEWORK_RRO" != "true" ] && [ "$WANT_PIT" != "true" ] && [ "$WANT_WALLPAPER_RES" != "true" ]; then
+if [ -z "$TARGETS" ] && [ "$WANT_FRAMEWORK_RRO" != "true" ] && [ "$WANT_PIT" != "true" ] && [ "$WANT_WALLPAPER_RES" != "true" ]; then
   echo "❌ No targets selected!"
   exit 1
 fi
+
+detect_fs_type() {
+  local IMG="$1"
+  local FS_TYPE=""
+  FS_TYPE=$(blkid -o value -s TYPE "$IMG" 2>/dev/null)
+  if [ -z "$FS_TYPE" ]; then
+    local FILE_OUTPUT=$(file "$IMG" 2>/dev/null)
+    if echo "$FILE_OUTPUT" | grep -qi "f2fs"; then
+      FS_TYPE="f2fs"
+    elif echo "$FILE_OUTPUT" | grep -qi "erofs"; then
+      FS_TYPE="erofs"
+    elif echo "$FILE_OUTPUT" | grep -qi "ext4\|ext3\|ext2"; then
+      FS_TYPE="ext4"
+    elif echo "$FILE_OUTPUT" | grep -qi "android sparse"; then
+      FS_TYPE="sparse"
+    fi
+  fi
+  if [ -z "$FS_TYPE" ]; then
+    local MAGIC=$(xxd -l 4 -p "$IMG" 2>/dev/null)
+    case "$MAGIC" in
+      1020f5f2) FS_TYPE="f2fs" ;;
+      e2e1f5e0) FS_TYPE="erofs" ;;
+      53ef*)    FS_TYPE="ext4" ;;
+      3aff*)    FS_TYPE="sparse" ;;
+    esac
+  fi
+  echo "$FS_TYPE"
+}
+
+extract_f2fs() {
+  local IMG="$1" OUT_DIR="$2" TARGETS="$3" SINGLE_FILES="$4"
+  sudo modprobe f2fs 2>/dev/null || true
+  local MNT="/tmp/f2fs_mount_$$"
+  mkdir -p "$MNT"
+  if ! sudo mount -t f2fs -o ro,loop "$IMG" "$MNT" 2>/dev/null; then
+    echo "  ❌ f2fs mount failed"
+    rm -rf "$MNT"
+    return 1
+  fi
+  echo "  ✅ Mounted f2fs successfully"
+  for TARGET in $TARGETS; do
+    IS_FILE=false
+    for SF in $SINGLE_FILES; do
+      [ "$TARGET" = "$SF" ] && IS_FILE=true && break
+    done
+    if $IS_FILE; then
+      FOUND=false
+      for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
+        if sudo test -f "$SRC_PATH" 2>/dev/null; then
+          mkdir -p "$OUT_DIR/$(dirname "$TARGET")"
+          sudo cp "$SRC_PATH" "$OUT_DIR/$TARGET"
+          sudo chown $(id -u):$(id -g) "$OUT_DIR/$TARGET"
+          FOUND=true; break
+        fi
+      done
+      $FOUND || echo "  ⚠️ $TARGET not found"
+    else
+      FOUND=false
+      local DEST="$OUT_DIR/$(dirname "$TARGET")"
+      mkdir -p "$DEST"
+      for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
+        if sudo test -d "$SRC_PATH" 2>/dev/null; then
+          sudo cp -r "$SRC_PATH" "$DEST/" 2>/dev/null
+          sudo chown -R $(id -u):$(id -g) "$DEST/$(basename "$TARGET")"
+          FOUND=true; break
+        fi
+      done
+      $FOUND || echo "  ⚠️ $TARGET not found"
+    fi
+  done
+  sudo umount "$MNT"
+  rm -rf "$MNT"
+  return 0
+}
 
 echo ""; echo "[1/8] Downloading..."
 wget -q --no-check-certificate --content-disposition "$URL"
@@ -113,106 +184,93 @@ done
 rm -f "$AP_FILE"
 echo "✅ Done"
 
-extract_f2fs() {
-  local IMG="$1" OUT_DIR="$2" TARGETS="$3" SINGLE_FILES="$4"
-  sudo modprobe f2fs 2>/dev/null || true
-  local MNT="/tmp/f2fs_mount_$$"
-  mkdir -p "$MNT"
-  if ! sudo mount -t f2fs -o ro,loop "$IMG" "$MNT" 2>/dev/null; then
-    echo "  ❌ f2fs mount failed"
-    rm -rf "$MNT"
-    return 1
-  fi
-  echo "  ✅ Mounted f2fs successfully"
-  for TARGET in $TARGETS; do
-    IS_FILE=false
-    for SF in $SINGLE_FILES; do
-      [ "$TARGET" = "$SF" ] && IS_FILE=true && break
-    done
-    if $IS_FILE; then
-      FOUND=false
-      for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
-        if sudo test -f "$SRC_PATH" 2>/dev/null; then
-          mkdir -p "$OUT_DIR/$(dirname "$TARGET")"
-          sudo cp "$SRC_PATH" "$OUT_DIR/$TARGET"
-          sudo chown $(id -u):$(id -g) "$OUT_DIR/$TARGET"
-          FOUND=true; break
-        fi
-      done
-      $FOUND || echo "  ⚠️ $TARGET not found"
-    else
-      FOUND=false
-      local DEST="$OUT_DIR/$(dirname "$TARGET")"
-      mkdir -p "$DEST"
-      for SRC_PATH in "$MNT/$TARGET" "$MNT/system/$TARGET"; do
-        if sudo test -d "$SRC_PATH" 2>/dev/null; then
-          sudo cp -r "$SRC_PATH" "$DEST/" 2>/dev/null
-          sudo chown -R $(id -u):$(id -g) "$DEST/$(basename "$TARGET")"
-          FOUND=true; break
-        fi
-      done
-      $FOUND || echo "  ⚠️ $TARGET not found"
-    fi
-  done
-  sudo umount "$MNT"
-  rm -rf "$MNT"
-  return 0
-}
-
-echo ""; echo "[5/8] Extracting super.img..."
+echo ""; echo "[5/8] Processing super.img..."
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
+
 if [ -n "$SUPER_FILE" ]; then
+  echo "  Found: $(basename "$SUPER_FILE")"
+
   if [[ "$SUPER_FILE" == *.lz4 ]]; then
     echo "  Decompressing LZ4..."
     lz4 -d "$SUPER_FILE" "super.img" 2>/dev/null
     SUPER_FILE="super.img"
+    echo "  ✅ Decompressed"
   fi
-  if file "$SUPER_FILE" 2>/dev/null | grep -q "sparse"; then
-    echo "  Converting sparse image..."
+
+  SUPER_FS=$(detect_fs_type "$SUPER_FILE")
+  echo "  Super format: $SUPER_FS"
+
+  if [ "$SUPER_FS" = "sparse" ]; then
+    echo "  Converting sparse to raw..."
     simg2img "$SUPER_FILE" "super.raw.img" 2>/dev/null || tools/android-tools/simg2img "$SUPER_FILE" "super.raw.img"
     SUPER_FILE="super.raw.img"
+    SUPER_FS=$(detect_fs_type "$SUPER_FILE")
+    echo "  ✅ Converted - new format: $SUPER_FS"
   fi
-  echo "  Contents:"
+
+  echo "  Unpacking partitions..."
   mkdir -p super_dump
-  tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1
+  tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1 || { echo "  ❌ lpunpack failed"; exit 1; }
+
+  echo ""
+  echo "  Partitions detected:"
+  echo "  ┌─────────────────────────────────────────────┐"
+
+  SYSTEM_IMG=""
+  SYSTEM_FS=""
+  PRODUCT_IMG=""
+  PRODUCT_FS=""
+
   for img in super_dump/*.img; do
-    [ -f "$img" ] && echo "    $(basename "$img")"
+    [ -f "$img" ] || continue
+    PART_NAME=$(basename "$img" .img)
+    PART_FS=$(detect_fs_type "$img")
+    PART_SIZE=$(numfmt --to=iec $(stat -c%s "$img") 2>/dev/null || echo "?")
+
+    printf "  │ %-15s → %-6s (%s)\n" "$PART_NAME" "$PART_FS" "$PART_SIZE"
+
+    case "$PART_NAME" in
+      system|system_a) SYSTEM_IMG="$img"; SYSTEM_FS="$PART_FS" ;;
+      product|product_a) PRODUCT_IMG="$img"; PRODUCT_FS="$PART_FS" ;;
+    esac
   done
 
-  if [ "$WANT_SUPER_CONFIG" = "true" ]; then
-    if [ -d "super_dump/configs" ]; then
-      cp -r "super_dump/configs" "output/super_config"
-    elif [ -d "super_dump/config" ]; then
-      cp -r "super_dump/config" "output/super_config"
-    else
-      mkdir -p "output/super_config"
-      find super_dump -maxdepth 1 \( -name "*.cfg" -o -name "*_partition*" -o -name "misc_info*" \) -exec cp {} "output/super_config/" \; 2>/dev/null
-      tools/android-tools/lpdump "$SUPER_FILE" > "output/super_config/lpdump.txt" 2>/dev/null || true
+  echo "  └─────────────────────────────────────────────┘"
+
+  [ -n "$SYSTEM_IMG" ] && echo "  System:  $(basename "$SYSTEM_IMG") ($SYSTEM_FS)"
+  [ -n "$PRODUCT_IMG" ] && echo "  Product: $(basename "$PRODUCT_IMG") ($PRODUCT_FS)"
+
+else
+  echo "  No super.img found - legacy device"
+
+  SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
+  if [ -n "$SYSTEM_IMG" ]; then
+    if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
+      lz4 -d "$SYSTEM_IMG" "system_raw.img" 2>/dev/null
+      SYSTEM_IMG="system_raw.img"
     fi
-    echo "    ✓ super config saved"
+    SYSTEM_FS=$(detect_fs_type "$SYSTEM_IMG")
+    if [ "$SYSTEM_FS" = "sparse" ]; then
+      simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
+      SYSTEM_IMG="system_unsparse.img"
+      SYSTEM_FS=$(detect_fs_type "$SYSTEM_IMG")
+    fi
+    echo "  System: $(basename "$SYSTEM_IMG") ($SYSTEM_FS)"
   fi
 
-  SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
-  PRODUCT_IMG=$(find super_dump -name "product.img" -o -name "product_a.img" | head -n 1)
-else
-  [ "$WANT_SUPER_CONFIG" = "true" ] && echo "  ⚠️ Legacy device - super config not available"
-  SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
-  if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
-    lz4 -d "$SYSTEM_IMG" "system_raw.img" 2>/dev/null
-    SYSTEM_IMG="system_raw.img"
-  fi
-  if [ -n "$SYSTEM_IMG" ] && file "$SYSTEM_IMG" 2>/dev/null | grep -q "sparse"; then
-    simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
-    SYSTEM_IMG="system_unsparse.img"
-  fi
   PRODUCT_IMG=$(find . -maxdepth 1 -name "product.img.lz4" -o -name "product.img" | head -n 1)
-  if [[ "$PRODUCT_IMG" == *.lz4 ]]; then
-    lz4 -d "$PRODUCT_IMG" "product_raw.img" 2>/dev/null
-    PRODUCT_IMG="product_raw.img"
-  fi
-  if [ -n "$PRODUCT_IMG" ] && file "$PRODUCT_IMG" 2>/dev/null | grep -q "sparse"; then
-    simg2img "$PRODUCT_IMG" "product_unsparse.img" 2>/dev/null
-    PRODUCT_IMG="product_unsparse.img"
+  if [ -n "$PRODUCT_IMG" ]; then
+    if [[ "$PRODUCT_IMG" == *.lz4 ]]; then
+      lz4 -d "$PRODUCT_IMG" "product_raw.img" 2>/dev/null
+      PRODUCT_IMG="product_raw.img"
+    fi
+    PRODUCT_FS=$(detect_fs_type "$PRODUCT_IMG")
+    if [ "$PRODUCT_FS" = "sparse" ]; then
+      simg2img "$PRODUCT_IMG" "product_unsparse.img" 2>/dev/null
+      PRODUCT_IMG="product_unsparse.img"
+      PRODUCT_FS=$(detect_fs_type "$PRODUCT_IMG")
+    fi
+    echo "  Product: $(basename "$PRODUCT_IMG") ($PRODUCT_FS)"
   fi
 fi
 echo "✅ Done"
@@ -225,15 +283,15 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
     mkdir -p product_extracted
     RRO_FOUND=false
 
-    PROD_FS_TYPE=$(blkid -o value -s TYPE "$PRODUCT_IMG" 2>/dev/null || file "$PRODUCT_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
+    echo "  Product FS: $PRODUCT_FS"
 
-    if [ "$PROD_FS_TYPE" = "f2fs" ]; then
-      echo "  Detected f2fs product.img - mounting..."
+    if [ "$PRODUCT_FS" = "f2fs" ]; then
+      echo "  Mounting f2fs product..."
       sudo modprobe f2fs 2>/dev/null || true
       PROD_MNT="/tmp/product_f2fs_$$"
       mkdir -p "$PROD_MNT"
       if sudo mount -t f2fs -o ro,loop "$PRODUCT_IMG" "$PROD_MNT" 2>/dev/null; then
-        echo "  ✅ Mounted product f2fs"
+        echo "  ✅ Mounted"
         APK_SRC=$(sudo find "$PROD_MNT" -name "framework-res__*__auto_generated_rro_product.apk" 2>/dev/null | head -n 1)
         if [ -n "$APK_SRC" ]; then
           sudo cp "$APK_SRC" "output/$(basename "$APK_SRC")"
@@ -244,19 +302,23 @@ if [ "$WANT_FRAMEWORK_RRO" = "true" ]; then
         sudo umount "$PROD_MNT"
         rm -rf "$PROD_MNT"
       else
-        echo "  ❌ product f2fs mount failed"
+        echo "  ❌ f2fs mount failed"
       fi
+    elif [ "$PRODUCT_FS" = "erofs" ]; then
+      echo "  Extracting erofs product..."
+      tools/erofs-utils/extract.erofs -i "$PRODUCT_IMG" -x -o product_extracted/ >/dev/null 2>&1
     else
-      tools/erofs-utils/extract.erofs -i "$PRODUCT_IMG" -x -o product_extracted/ >/dev/null 2>&1 || {
-        for SRC_PATH in "overlay" "product/overlay"; do
-          if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
-            mkdir -p "product_extracted/overlay"
-            debugfs -R "rdump $SRC_PATH product_extracted/overlay" "$PRODUCT_IMG" 2>/dev/null
-            break
-          fi
-        done
-      }
+      echo "  Extracting ext4 product via debugfs..."
+      for SRC_PATH in "overlay" "product/overlay"; do
+        if debugfs -R "ls $SRC_PATH" "$PRODUCT_IMG" 2>/dev/null | grep -q .; then
+          mkdir -p "product_extracted/overlay"
+          debugfs -R "rdump $SRC_PATH product_extracted/overlay" "$PRODUCT_IMG" 2>/dev/null
+          break
+        fi
+      done
+    fi
 
+    if [ "$PRODUCT_FS" != "f2fs" ]; then
       for BASE in \
         "product_extracted/product_a/product/overlay" \
         "product_extracted/product_a/overlay" \
@@ -290,17 +352,22 @@ else
 
   SINGLE_FILES="build.prop floating_features.xml"
 
-  FS_TYPE=$(blkid -o value -s TYPE "$SYSTEM_IMG" 2>/dev/null || file "$SYSTEM_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
+  echo "  System FS: $SYSTEM_FS"
 
-  if [ "$FS_TYPE" = "f2fs" ]; then
-    echo "  Detected f2fs filesystem - mounting..."
+  if [ "$SYSTEM_FS" = "f2fs" ]; then
+    echo "  Mounting f2fs..."
     ALL_TARGETS="$TARGETS"
     [ "$WANT_WALLPAPER_RES" = "true" ] && ALL_TARGETS="$ALL_TARGETS priv-app/wallpaper-res"
     extract_f2fs "$SYSTEM_IMG" "system_extracted" "$ALL_TARGETS" "$SINGLE_FILES" || true
-  elif tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
-    echo "  ✅ Extracted via erofs"
+  elif [ "$SYSTEM_FS" = "erofs" ]; then
+    echo "  Extracting erofs..."
+    tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1 || {
+      echo "  ❌ erofs extraction failed"
+      exit 1
+    }
+    echo "  ✅ Extracted"
   else
-    echo "  erofs failed - trying debugfs..."
+    echo "  Extracting ext4 via debugfs..."
     DEBUGFS_TARGETS="$TARGETS"
     [ "$WANT_WALLPAPER_RES" = "true" ] && DEBUGFS_TARGETS="$DEBUGFS_TARGETS priv-app/wallpaper-res"
 
@@ -321,7 +388,6 @@ else
         $FOUND || echo "  ⚠️ $TARGET not found"
       else
         FOUND=false
-        
         DEST_PARENT="system_extracted/$(dirname "$TARGET")"
         mkdir -p "$DEST_PARENT"
         for SRC_PATH in "$TARGET" "system/$TARGET"; do
