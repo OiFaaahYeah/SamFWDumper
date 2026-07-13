@@ -39,36 +39,33 @@ LIB64_FILES=$(cat targets/system/lib64.txt 2>/dev/null | tr '\n' ' ')
 FRAMEWORK_JARS=$(cat targets/system/framework.txt 2>/dev/null | tr '\n' ' ')
 CAMERADATA_ITEMS=$(cat targets/system/cameradata.txt 2>/dev/null | tr '\n' ' ')
 
-echo ""; echo "[1/6] Downloading..."
-wget -q --no-check-certificate --content-disposition "$URL"
-ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
-[ ! -f "$ZIP_FILE" ] && { echo "❌ Download failed"; exit 1; }
-FILESIZE=$(stat -c%s "$ZIP_FILE")
-[ "$FILESIZE" -eq 0 ] && { echo "❌ Empty file"; exit 1; }
-echo "✅ Downloaded: $(numfmt --to=iec $FILESIZE)"
-
-CSC_CODE=$(echo "$ZIP_FILE" | sed 's/\.zip$//' | tr '_' '\n' | grep -E '^[A-Z]{3}$' | grep -v -E '^(COM|SAM|FAC)$' | head -1)
-AP_CODE=$(echo "$ZIP_FILE" | sed 's/\.zip$//' | tr '_' '\n' | grep -E '^[A-Z][A-Z0-9]{11,}$' | head -1)
-echo "$CSC_CODE" > csc_code.txt
-echo "$AP_CODE" > ap_code.txt
-echo "Firmware: $AP_CODE | CSC: $CSC_CODE"
-
-echo ""; echo "[2/6] Extracting ZIP..."
-unzip -o "$ZIP_FILE" >/dev/null 2>&1
-rm -f "$ZIP_FILE"
-echo "✅ Done"
-
-echo ""; echo "[3/6] Extracting AP..."
-AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
-[ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
-echo "  Extracting: $(basename "$AP_FILE")"
-tar -xf "$AP_FILE" >/dev/null 2>&1
-echo "  Contents:"
-for file in *.img *.img.lz4 *.bin *.bin.lz4 *.elf; do
-  [ -f "$file" ] && echo "    $file"
-done
-rm -f "$AP_FILE"
-echo "✅ Done"
+detect_fs_type() {
+  local IMG="$1"
+  local FS_TYPE=""
+  FS_TYPE=$(blkid -o value -s TYPE "$IMG" 2>/dev/null)
+  if [ -z "$FS_TYPE" ]; then
+    local FILE_OUTPUT=$(file "$IMG" 2>/dev/null)
+    if echo "$FILE_OUTPUT" | grep -qi "f2fs"; then
+      FS_TYPE="f2fs"
+    elif echo "$FILE_OUTPUT" | grep -qi "erofs"; then
+      FS_TYPE="erofs"
+    elif echo "$FILE_OUTPUT" | grep -qi "ext4\|ext3\|ext2"; then
+      FS_TYPE="ext4"
+    elif echo "$FILE_OUTPUT" | grep -qi "android sparse"; then
+      FS_TYPE="sparse"
+    fi
+  fi
+  if [ -z "$FS_TYPE" ]; then
+    local MAGIC=$(xxd -l 4 -p "$IMG" 2>/dev/null)
+    case "$MAGIC" in
+      1020f5f2) FS_TYPE="f2fs" ;;
+      e2e1f5e0) FS_TYPE="erofs" ;;
+      53ef*)    FS_TYPE="ext4" ;;
+      3aff*)    FS_TYPE="sparse" ;;
+    esac
+  fi
+  echo "$FS_TYPE"
+}
 
 extract_f2fs_mount() {
   local IMG="$1" OUT_DIR="$2"
@@ -204,36 +201,106 @@ extract_f2fs_mount() {
   return 0
 }
 
-echo ""; echo "[4/6] Extracting super.img..."
+echo ""; echo "[1/6] Downloading..."
+wget -q --no-check-certificate --content-disposition "$URL"
+ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
+[ ! -f "$ZIP_FILE" ] && { echo "❌ Download failed"; exit 1; }
+FILESIZE=$(stat -c%s "$ZIP_FILE")
+[ "$FILESIZE" -eq 0 ] && { echo "❌ Empty file"; exit 1; }
+echo "✅ Downloaded: $(numfmt --to=iec $FILESIZE)"
+
+CSC_CODE=$(echo "$ZIP_FILE" | sed 's/\.zip$//' | tr '_' '\n' | grep -E '^[A-Z]{3}$' | grep -v -E '^(COM|SAM|FAC)$' | head -1)
+AP_CODE=$(echo "$ZIP_FILE" | sed 's/\.zip$//' | tr '_' '\n' | grep -E '^[A-Z][A-Z0-9]{11,}$' | head -1)
+echo "$CSC_CODE" > csc_code.txt
+echo "$AP_CODE" > ap_code.txt
+echo "Firmware: $AP_CODE | CSC: $CSC_CODE"
+
+echo ""; echo "[2/6] Extracting ZIP..."
+unzip -o "$ZIP_FILE" >/dev/null 2>&1
+rm -f "$ZIP_FILE"
+echo "✅ Done"
+
+echo ""; echo "[3/6] Extracting AP..."
+AP_FILE=$(find . -name "AP_*.tar.md5" -o -name "AP_*.tar" | head -n 1)
+[ -z "$AP_FILE" ] && { echo "❌ AP file not found"; exit 1; }
+echo "  Extracting: $(basename "$AP_FILE")"
+tar -xf "$AP_FILE" >/dev/null 2>&1
+echo "  Contents:"
+for file in *.img *.img.lz4 *.bin *.bin.lz4 *.elf; do
+  [ -f "$file" ] && echo "    $file"
+done
+rm -f "$AP_FILE"
+echo "✅ Done"
+
+echo ""; echo "[4/6] Processing super.img..."
 mkdir -p super_dump "output/$OUTPUT_NAME/system"
 
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" -o -name "super.img" | head -n 1)
+SYSTEM_FS=""
+
 if [ -n "$SUPER_FILE" ]; then
+  echo "  Found: $(basename "$SUPER_FILE")"
+
   if [[ "$SUPER_FILE" == *.lz4 ]]; then
     echo "  Decompressing LZ4..."
     lz4 -d "$SUPER_FILE" "super.img" 2>/dev/null
     SUPER_FILE="super.img"
+    echo "  ✅ Decompressed"
   fi
-  if file "$SUPER_FILE" 2>/dev/null | grep -q "sparse"; then
-    echo "  Converting sparse image..."
+
+  SUPER_FS=$(detect_fs_type "$SUPER_FILE")
+  echo "  Super format: $SUPER_FS"
+
+  if [ "$SUPER_FS" = "sparse" ]; then
+    echo "  Converting sparse to raw..."
     simg2img "$SUPER_FILE" "super.raw.img" 2>/dev/null || tools/android-tools/simg2img "$SUPER_FILE" "super.raw.img"
     SUPER_FILE="super.raw.img"
+    SUPER_FS=$(detect_fs_type "$SUPER_FILE")
+    echo "  ✅ Converted - new format: $SUPER_FS"
   fi
-  echo "  Contents:"
-  tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1
+
+  echo "  Unpacking partitions..."
+  tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1 || { echo "  ❌ lpunpack failed"; exit 1; }
+
+  echo ""
+  echo "  Partitions detected:"
+  echo "  ┌─────────────────────────────────────────────┐"
+
+  SYSTEM_IMG=""
+
   for img in super_dump/*.img; do
-    [ -f "$img" ] && echo "    $(basename "$img")"
+    [ -f "$img" ] || continue
+    PART_NAME=$(basename "$img" .img)
+    PART_FS=$(detect_fs_type "$img")
+    PART_SIZE=$(numfmt --to=iec $(stat -c%s "$img") 2>/dev/null || echo "?")
+
+    printf "  │ %-15s → %-6s (%s)\n" "$PART_NAME" "$PART_FS" "$PART_SIZE"
+
+    case "$PART_NAME" in
+      system|system_a) SYSTEM_IMG="$img"; SYSTEM_FS="$PART_FS" ;;
+    esac
   done
-  SYSTEM_IMG=$(find super_dump -name "system.img" -o -name "system_a.img" | head -n 1)
+
+  echo "  └─────────────────────────────────────────────┘"
+
+  [ -n "$SYSTEM_IMG" ] && echo "  System: $(basename "$SYSTEM_IMG") ($SYSTEM_FS)"
+
 else
+  echo "  No super.img found - legacy device"
+
   SYSTEM_IMG=$(find . -maxdepth 1 -name "system.img.lz4" -o -name "system.img" | head -n 1)
-  if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
-    lz4 -d "$SYSTEM_IMG" "system_raw.img" 2>/dev/null
-    SYSTEM_IMG="system_raw.img"
-  fi
-  if [ -n "$SYSTEM_IMG" ] && file "$SYSTEM_IMG" 2>/dev/null | grep -q "sparse"; then
-    simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
-    SYSTEM_IMG="system_unsparse.img"
+  if [ -n "$SYSTEM_IMG" ]; then
+    if [[ "$SYSTEM_IMG" == *.lz4 ]]; then
+      lz4 -d "$SYSTEM_IMG" "system_raw.img" 2>/dev/null
+      SYSTEM_IMG="system_raw.img"
+    fi
+    SYSTEM_FS=$(detect_fs_type "$SYSTEM_IMG")
+    if [ "$SYSTEM_FS" = "sparse" ]; then
+      simg2img "$SYSTEM_IMG" "system_unsparse.img" 2>/dev/null
+      SYSTEM_IMG="system_unsparse.img"
+      SYSTEM_FS=$(detect_fs_type "$SYSTEM_IMG")
+    fi
+    echo "  System: $(basename "$SYSTEM_IMG") ($SYSTEM_FS)"
   fi
 fi
 
@@ -243,16 +310,21 @@ echo "✅ Done"
 echo ""; echo "[5/6] Extracting system.img..."
 mkdir -p system_extracted
 
-FS_TYPE=$(blkid -o value -s TYPE "$SYSTEM_IMG" 2>/dev/null || file "$SYSTEM_IMG" | grep -o 'f2fs\|erofs\|ext[234]')
+echo "  System FS: $SYSTEM_FS"
 
-if [ "$FS_TYPE" = "f2fs" ]; then
-  echo "  Detected f2fs filesystem - mounting..."
+if [ "$SYSTEM_FS" = "f2fs" ]; then
+  echo "  Mounting f2fs..."
   extract_f2fs_mount "$SYSTEM_IMG" "system_extracted" || true
-elif tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1; then
-  echo "  ✅ Extracted via erofs"
+elif [ "$SYSTEM_FS" = "erofs" ]; then
+  echo "  Extracting erofs..."
+  tools/erofs-utils/extract.erofs -i "$SYSTEM_IMG" -x -o system_extracted/ >/dev/null 2>&1 || {
+    echo "  ❌ erofs extraction failed"
+    exit 1
+  }
+  echo "  ✅ Extracted"
 else
-  echo "  erofs failed - trying debugfs..."
-  
+  echo "  Extracting ext4 via debugfs..."
+
   for FOLDER in $APP_FOLDERS; do
     for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -262,7 +334,7 @@ else
       fi
     done
   done
-  
+
   for FOLDER in $PRIVAPP_FOLDERS; do
     for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -284,7 +356,7 @@ else
       done
     fi
   done
-  
+
   for ITEM in $ETC_ITEMS; do
     for TARGET in "etc/$ITEM" "system/etc/$ITEM"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
@@ -304,7 +376,7 @@ else
       fi
     done
   done
-  
+
   for FILE in $MEDIA_FILES; do
     for SRC in "media/$FILE" "system/media/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -324,7 +396,7 @@ else
       fi
     done
   done
-  
+
   for FILE in $LIB64_FILES; do
     for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
@@ -334,7 +406,7 @@ else
       fi
     done
   done
-  
+
   for JAR in $FRAMEWORK_JARS; do
     for SRC in "framework/$JAR" "system/framework/$JAR"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
