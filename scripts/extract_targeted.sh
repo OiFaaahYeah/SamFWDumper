@@ -242,7 +242,7 @@ extract_f2fs_mount() {
           BEST_SIZE=$SZ
           BEST_SRC="$SRC_PATH"
         fi
-      done
+      fi
     done
     if [ -n "$BEST_SRC" ]; then
       mkdir -p "$OUT_DIR/lib64"
@@ -709,8 +709,11 @@ if [ -n "$MEDIA_FILES" ]; then
       "system_extracted/system_b/media/$FILE" \
       "system_extracted/system/system/media/$FILE" \
       "system_extracted/system_a/system/media/$FILE" \
-      "system_extracted/system_b/system/media/$FILE"; do
-      if [ -e "$BASE" ]; then
+      "system_extracted/system_b/system/media/$FILE" \
+      "system_extracted"; do
+      if [ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]; then
+        copy_item "$BASE/$FILE" "$SYS_OUT/media" "$FILE" "media/$FILE" && HAS_ANY=true && FOUND=true && break
+      elif [ -e "$BASE" ]; then
         copy_item "$BASE" "$SYS_OUT/media" "$FILE" "media/$FILE" && HAS_ANY=true && FOUND=true && break
       fi
     done
@@ -730,13 +733,10 @@ if [ -n "$LIB_FILES" ]; then
       "system_extracted/system_a/system/lib/$FILE" \
       "system_extracted/system_b/system/lib/$FILE" \
       "system_extracted"; do
-      if [ -e "$BASE/$FILE" ] || ([ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]); then
-        :
-      fi
-      if [ -e "$BASE" ] && [ "$BASE" != "system_extracted" ]; then
-        copy_item "$BASE" "$SYS_OUT/lib" "$FILE" "lib/$FILE" && HAS_ANY=true && FOUND=true && break
-      elif [ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]; then
+      if [ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]; then
         copy_item "$BASE/$FILE" "$SYS_OUT/lib" "$FILE" "lib/$FILE" && HAS_ANY=true && FOUND=true && break
+      elif [ -e "$BASE" ]; then
+        copy_item "$BASE" "$SYS_OUT/lib" "$FILE" "lib/$FILE" && HAS_ANY=true && FOUND=true && break
       fi
     done
     $FOUND || echo "    ❌ lib/$FILE not found"
