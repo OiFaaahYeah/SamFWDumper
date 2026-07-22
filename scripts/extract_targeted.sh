@@ -80,120 +80,200 @@ extract_f2fs_mount() {
   echo "  ✅ Mounted f2fs successfully"
 
   for FOLDER in $APP_FOLDERS; do
-    FOUND=false
-    for SRC_PATH in "$MNT/app/$FOLDER" "$MNT/system/app/$FOLDER"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/app/$FOLDER" "$MNT/app/$FOLDER"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/app"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/app/" 2>/dev/null
-        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/app/$FOLDER"
-        FOUND=true; break
+        local SZ=$(sudo du -sb "$SRC_PATH" 2>/dev/null | cut -f1 || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    $FOUND || echo "  ⚠️ app/$FOLDER not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/app"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/app/" 2>/dev/null
+      sudo chown -R $(id -u):$(id -g) "$OUT_DIR/app/$FOLDER"
+      echo "    ✓ app/$FOLDER ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ app/$FOLDER not found"
+    fi
   done
 
   for FOLDER in $PRIVAPP_FOLDERS; do
-    FOUND=false
-    for SRC_PATH in "$MNT/priv-app/$FOLDER" "$MNT/system/priv-app/$FOLDER"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/priv-app/$FOLDER" "$MNT/priv-app/$FOLDER"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/priv-app"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/priv-app/" 2>/dev/null
-        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/priv-app/$FOLDER"
-        FOUND=true; break
+        local SZ=$(sudo du -sb "$SRC_PATH" 2>/dev/null | cut -f1 || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    if ! $FOUND; then
+    if [ -z "$BEST_SRC" ]; then
       for ALT in "PhotoEditor_AIFull" "PhotoEditor_Full" "PhotoEditor"; do
         [ "$ALT" = "$FOLDER" ] && continue
-        for SRC_PATH in "$MNT/priv-app/$ALT" "$MNT/system/priv-app/$ALT"; do
+        for SRC_PATH in "$MNT/system/priv-app/$ALT" "$MNT/priv-app/$ALT"; do
           if sudo test -e "$SRC_PATH" 2>/dev/null; then
-            mkdir -p "$OUT_DIR/priv-app"
-            sudo cp -r "$SRC_PATH" "$OUT_DIR/priv-app/$FOLDER" 2>/dev/null
-            sudo chown -R $(id -u):$(id -g) "$OUT_DIR/priv-app/$FOLDER"
-            FOUND=true; break 2
+            local SZ=$(sudo du -sb "$SRC_PATH" 2>/dev/null | cut -f1 || echo 0)
+            if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+              BEST_SIZE=$SZ
+              BEST_SRC="$SRC_PATH"
+            fi
           fi
         done
       done
+      if [ -n "$BEST_SRC" ]; then
+        mkdir -p "$OUT_DIR/priv-app"
+        sudo cp -r "$BEST_SRC" "$OUT_DIR/priv-app/$FOLDER" 2>/dev/null
+        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/priv-app/$FOLDER"
+        echo "    ✓ priv-app/$FOLDER (found as $(basename $(dirname "$BEST_SRC")))"
+        continue
+      fi
     fi
-    $FOUND || echo "  ⚠️ priv-app/$FOLDER not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/priv-app"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/priv-app/" 2>/dev/null
+      sudo chown -R $(id -u):$(id -g) "$OUT_DIR/priv-app/$FOLDER"
+      echo "    ✓ priv-app/$FOLDER ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ priv-app/$FOLDER not found"
+    fi
   done
 
   for ITEM in $ETC_ITEMS; do
-    FOUND=false
-    for SRC_PATH in "$MNT/etc/$ITEM" "$MNT/system/etc/$ITEM"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/etc/$ITEM" "$MNT/etc/$ITEM"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/etc"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/etc/" 2>/dev/null
-        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/etc/$ITEM"
-        FOUND=true; break
+        local SZ=$(sudo du -sb "$SRC_PATH" 2>/dev/null | cut -f1 || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    $FOUND || echo "  ⚠️ etc/$ITEM not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/etc"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/etc/" 2>/dev/null
+      sudo chown -R $(id -u):$(id -g) "$OUT_DIR/etc/$ITEM"
+      echo "    ✓ etc/$ITEM ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ etc/$ITEM not found"
+    fi
   done
 
   for ITEM in $CAMERADATA_ITEMS; do
-    FOUND=false
-    for SRC_PATH in "$MNT/cameradata/$ITEM" "$MNT/system/cameradata/$ITEM"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/cameradata/$ITEM" "$MNT/cameradata/$ITEM"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/cameradata"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/cameradata/" 2>/dev/null
-        sudo chown -R $(id -u):$(id -g) "$OUT_DIR/cameradata/$ITEM"
-        FOUND=true; break
+        local SZ=$(sudo du -sb "$SRC_PATH" 2>/dev/null | cut -f1 || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    $FOUND || echo "  ⚠️ cameradata/$ITEM not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/cameradata"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/cameradata/" 2>/dev/null
+      sudo chown -R $(id -u):$(id -g) "$OUT_DIR/cameradata/$ITEM"
+      echo "    ✓ cameradata/$ITEM ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ cameradata/$ITEM not found"
+    fi
   done
 
   for FILE in $MEDIA_FILES; do
-    FILE_FOUND=false
-    for SRC_PATH in "$MNT/media/$FILE" "$MNT/system/media/$FILE"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/media/$FILE" "$MNT/media/$FILE"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/media"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/media/$FILE"
-        sudo chown $(id -u):$(id -g) "$OUT_DIR/media/$FILE"
-        FILE_FOUND=true; break
+        local SZ=$(sudo stat -c%s "$SRC_PATH" 2>/dev/null || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    $FILE_FOUND || echo "  ⚠️ media/$FILE not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/media"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/media/$FILE"
+      sudo chown $(id -u):$(id -g) "$OUT_DIR/media/$FILE"
+      echo "    ✓ media/$FILE ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ media/$FILE not found"
+    fi
   done
 
   for FILE in $LIB_FILES; do
-    FILE_FOUND=false
-    for SRC_PATH in "$MNT/lib/$FILE" "$MNT/system/lib/$FILE"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/lib/$FILE" "$MNT/lib/$FILE"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/lib"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/lib/$FILE"
-        sudo chown $(id -u):$(id -g) "$OUT_DIR/lib/$FILE"
-        FILE_FOUND=true; break
+        local SZ=$(sudo stat -c%s "$SRC_PATH" 2>/dev/null || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    $FILE_FOUND || echo "  ⚠️ lib/$FILE not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/lib"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/lib/$FILE"
+      sudo chown $(id -u):$(id -g) "$OUT_DIR/lib/$FILE"
+      echo "    ✓ lib/$FILE ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ lib/$FILE not found"
+    fi
   done
 
   for FILE in $LIB64_FILES; do
-    FILE_FOUND=false
-    for SRC_PATH in "$MNT/lib64/$FILE" "$MNT/system/lib64/$FILE"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/lib64/$FILE" "$MNT/lib64/$FILE"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/lib64"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/lib64/$FILE"
-        sudo chown $(id -u):$(id -g) "$OUT_DIR/lib64/$FILE"
-        FILE_FOUND=true; break
-      fi
+        local SZ=$(sudo stat -c%s "$SRC_PATH" 2>/dev/null || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
+      done
     done
-    $FILE_FOUND || echo "  ⚠️ lib64/$FILE not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/lib64"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/lib64/$FILE"
+      sudo chown $(id -u):$(id -g) "$OUT_DIR/lib64/$FILE"
+      echo "    ✓ lib64/$FILE ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ lib64/$FILE not found"
+    fi
   done
 
   for JAR in $FRAMEWORK_JARS; do
-    JAR_FOUND=false
-    for SRC_PATH in "$MNT/framework/$JAR" "$MNT/system/framework/$JAR"; do
+    BEST_SRC=""
+    BEST_SIZE=0
+    for SRC_PATH in "$MNT/system/framework/$JAR" "$MNT/framework/$JAR"; do
       if sudo test -e "$SRC_PATH" 2>/dev/null; then
-        mkdir -p "$OUT_DIR/framework"
-        sudo cp -r "$SRC_PATH" "$OUT_DIR/framework/$JAR"
-        sudo chown $(id -u):$(id -g) "$OUT_DIR/framework/$JAR"
-        JAR_FOUND=true; break
+        local SZ=$(sudo stat -c%s "$SRC_PATH" 2>/dev/null || echo 0)
+        if [ "${SZ:-0}" -gt "$BEST_SIZE" ]; then
+          BEST_SIZE=$SZ
+          BEST_SRC="$SRC_PATH"
+        fi
       fi
     done
-    $JAR_FOUND || echo "  ⚠️ framework/$JAR not found"
+    if [ -n "$BEST_SRC" ]; then
+      mkdir -p "$OUT_DIR/framework"
+      sudo cp -r "$BEST_SRC" "$OUT_DIR/framework/$JAR"
+      sudo chown $(id -u):$(id -g) "$OUT_DIR/framework/$JAR"
+      echo "    ✓ framework/$JAR ($(numfmt --to=iec $BEST_SIZE))"
+    else
+      echo "  ⚠️ framework/$JAR not found"
+    fi
   done
 
   sudo umount "$MNT"
@@ -277,7 +357,7 @@ if [ -n "$SUPER_FILE" ]; then
     printf "  │ %-15s → %-6s (%s)\n" "$PART_NAME" "$PART_FS" "$PART_SIZE"
 
     case "$PART_NAME" in
-      system|system_a) SYSTEM_IMG="$img"; SYSTEM_FS="$PART_FS" ;;
+      system|system_a|system_b) SYSTEM_IMG="$img"; SYSTEM_FS="$PART_FS" ;;
     esac
   done
 
@@ -326,7 +406,7 @@ else
   echo "  Extracting ext4 via debugfs..."
 
   for FOLDER in $APP_FOLDERS; do
-    for TARGET in "app/$FOLDER" "system/app/$FOLDER"; do
+    for TARGET in "system/app/$FOLDER" "app/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
         mkdir -p "system_extracted/app/$FOLDER"
         debugfs -R "rdump $TARGET system_extracted/app/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
@@ -336,7 +416,7 @@ else
   done
 
   for FOLDER in $PRIVAPP_FOLDERS; do
-    for TARGET in "priv-app/$FOLDER" "system/priv-app/$FOLDER"; do
+    for TARGET in "system/priv-app/$FOLDER" "priv-app/$FOLDER"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
         mkdir -p "system_extracted/priv-app/$FOLDER"
         debugfs -R "rdump $TARGET system_extracted/priv-app/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
@@ -346,7 +426,7 @@ else
     if [ ! -d "system_extracted/priv-app/$FOLDER" ]; then
       for ALT in "PhotoEditor_AIFull" "PhotoEditor_Full" "PhotoEditor"; do
         [ "$ALT" = "$FOLDER" ] && continue
-        for TARGET in "priv-app/$ALT" "system/priv-app/$ALT"; do
+        for TARGET in "system/priv-app/$ALT" "priv-app/$ALT"; do
           if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
             mkdir -p "system_extracted/priv-app/$FOLDER"
             debugfs -R "rdump $TARGET system_extracted/priv-app/$FOLDER" "$SYSTEM_IMG" 2>/dev/null
@@ -358,7 +438,7 @@ else
   done
 
   for ITEM in $ETC_ITEMS; do
-    for TARGET in "etc/$ITEM" "system/etc/$ITEM"; do
+    for TARGET in "system/etc/$ITEM" "etc/$ITEM"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
         mkdir -p "system_extracted/etc"
         debugfs -R "rdump $TARGET system_extracted/etc/$ITEM" "$SYSTEM_IMG" 2>/dev/null
@@ -368,7 +448,7 @@ else
   done
 
   for ITEM in $CAMERADATA_ITEMS; do
-    for TARGET in "cameradata/$ITEM" "system/cameradata/$ITEM"; do
+    for TARGET in "system/cameradata/$ITEM" "cameradata/$ITEM"; do
       if debugfs -R "ls $TARGET" "$SYSTEM_IMG" 2>/dev/null | grep -q .; then
         mkdir -p "system_extracted/cameradata"
         debugfs -R "rdump $TARGET system_extracted/cameradata/$ITEM" "$SYSTEM_IMG" 2>/dev/null
@@ -378,7 +458,7 @@ else
   done
 
   for FILE in $MEDIA_FILES; do
-    for SRC in "media/$FILE" "system/media/$FILE"; do
+    for SRC in "system/media/$FILE" "media/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
         mkdir -p "system_extracted/media"
         debugfs -R "dump $SRC system_extracted/media/$FILE" "$SYSTEM_IMG" 2>/dev/null
@@ -388,7 +468,7 @@ else
   done
 
   for FILE in $LIB_FILES; do
-    for SRC in "lib/$FILE" "system/lib/$FILE"; do
+    for SRC in "system/lib/$FILE" "lib/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
         mkdir -p "system_extracted/lib"
         debugfs -R "dump $SRC system_extracted/lib/$FILE" "$SYSTEM_IMG" 2>/dev/null
@@ -398,7 +478,7 @@ else
   done
 
   for FILE in $LIB64_FILES; do
-    for SRC in "lib64/$FILE" "system/lib64/$FILE"; do
+    for SRC in "system/lib64/$FILE" "lib64/$FILE"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
         mkdir -p "system_extracted/lib64"
         debugfs -R "dump $SRC system_extracted/lib64/$FILE" "$SYSTEM_IMG" 2>/dev/null
@@ -408,7 +488,7 @@ else
   done
 
   for JAR in $FRAMEWORK_JARS; do
-    for SRC in "framework/$JAR" "system/framework/$JAR"; do
+    for SRC in "system/framework/$JAR" "framework/$JAR"; do
       if debugfs -R "stat $SRC" "$SYSTEM_IMG" 2>/dev/null | grep -q "Type: regular"; then
         mkdir -p "system_extracted/framework"
         debugfs -R "dump $SRC system_extracted/framework/$JAR" "$SYSTEM_IMG" 2>/dev/null
@@ -469,8 +549,10 @@ if [ -n "$APP_FOLDERS" ]; then
       "system_extracted/app" \
       "system_extracted/system/app" \
       "system_extracted/system_a/app" \
+      "system_extracted/system_b/app" \
       "system_extracted/system/system/app" \
-      "system_extracted/system_a/system/app"; do
+      "system_extracted/system_a/system/app" \
+      "system_extracted/system_b/system/app"; do
       if [ -d "$BASE" ]; then
         for ITEM in "$BASE/"*/; do
           [ -d "$ITEM" ] || continue
@@ -497,8 +579,10 @@ if [ -n "$APP_FOLDERS" ]; then
         "system_extracted/app/$FOLDER" \
         "system_extracted/system/app/$FOLDER" \
         "system_extracted/system_a/app/$FOLDER" \
+        "system_extracted/system_b/app/$FOLDER" \
         "system_extracted/system/system/app/$FOLDER" \
-        "system_extracted/system_a/system/app/$FOLDER"; do
+        "system_extracted/system_a/system/app/$FOLDER" \
+        "system_extracted/system_b/system/app/$FOLDER"; do
         if [ -e "$BASE" ]; then
           copy_item "$BASE" "$SYS_OUT/app" "$FOLDER" "app/$FOLDER" && HAS_ANY=true && FOUND=true && break
         fi
@@ -517,8 +601,10 @@ if [ -n "$PRIVAPP_FOLDERS" ]; then
       "system_extracted/priv-app" \
       "system_extracted/system/priv-app" \
       "system_extracted/system_a/priv-app" \
+      "system_extracted/system_b/priv-app" \
       "system_extracted/system/system/priv-app" \
-      "system_extracted/system_a/system/priv-app"; do
+      "system_extracted/system_a/system/priv-app" \
+      "system_extracted/system_b/system/priv-app"; do
       if [ -d "$BASE" ]; then
         for ITEM in "$BASE/"*/; do
           [ -d "$ITEM" ] || continue
@@ -545,8 +631,10 @@ if [ -n "$PRIVAPP_FOLDERS" ]; then
         "system_extracted/priv-app/$FOLDER" \
         "system_extracted/system/priv-app/$FOLDER" \
         "system_extracted/system_a/priv-app/$FOLDER" \
+        "system_extracted/system_b/priv-app/$FOLDER" \
         "system_extracted/system/system/priv-app/$FOLDER" \
-        "system_extracted/system_a/system/priv-app/$FOLDER"; do
+        "system_extracted/system_a/system/priv-app/$FOLDER" \
+        "system_extracted/system_b/system/priv-app/$FOLDER"; do
         if [ -e "$BASE" ]; then
           copy_item "$BASE" "$SYS_OUT/priv-app" "$FOLDER" "priv-app/$FOLDER" && HAS_ANY=true && FOUND=true && break
         fi
@@ -558,8 +646,10 @@ if [ -n "$PRIVAPP_FOLDERS" ]; then
             "system_extracted/priv-app/$ALT" \
             "system_extracted/system/priv-app/$ALT" \
             "system_extracted/system_a/priv-app/$ALT" \
+            "system_extracted/system_b/priv-app/$ALT" \
             "system_extracted/system/system/priv-app/$ALT" \
-            "system_extracted/system_a/system/priv-app/$ALT"; do
+            "system_extracted/system_a/system/priv-app/$ALT" \
+            "system_extracted/system_b/system/priv-app/$ALT"; do
             if [ -e "$BASE" ]; then
               copy_item "$BASE" "$SYS_OUT/priv-app" "$FOLDER" "priv-app/$FOLDER (found as $ALT)" && HAS_ANY=true && FOUND=true && break 2
             fi
@@ -578,8 +668,10 @@ if [ -n "$ETC_ITEMS" ]; then
       "system_extracted/etc/$ITEM" \
       "system_extracted/system/etc/$ITEM" \
       "system_extracted/system_a/etc/$ITEM" \
+      "system_extracted/system_b/etc/$ITEM" \
       "system_extracted/system/system/etc/$ITEM" \
-      "system_extracted/system_a/system/etc/$ITEM"; do
+      "system_extracted/system_a/system/etc/$ITEM" \
+      "system_extracted/system_b/system/etc/$ITEM"; do
       if [ -e "$BASE" ]; then
         copy_item "$BASE" "$SYS_OUT/etc" "$ITEM" "etc/$ITEM" && HAS_ANY=true && FOUND=true && break
       fi
@@ -595,8 +687,10 @@ if [ -n "$CAMERADATA_ITEMS" ]; then
       "system_extracted/cameradata/$ITEM" \
       "system_extracted/system/cameradata/$ITEM" \
       "system_extracted/system_a/cameradata/$ITEM" \
+      "system_extracted/system_b/cameradata/$ITEM" \
       "system_extracted/system/system/cameradata/$ITEM" \
-      "system_extracted/system_a/system/cameradata/$ITEM"; do
+      "system_extracted/system_a/system/cameradata/$ITEM" \
+      "system_extracted/system_b/system/cameradata/$ITEM"; do
       if [ -e "$BASE" ]; then
         copy_item "$BASE" "$SYS_OUT/cameradata" "$ITEM" "cameradata/$ITEM" && HAS_ANY=true && FOUND=true && break
       fi
@@ -612,8 +706,10 @@ if [ -n "$MEDIA_FILES" ]; then
       "system_extracted/media/$FILE" \
       "system_extracted/system/media/$FILE" \
       "system_extracted/system_a/media/$FILE" \
+      "system_extracted/system_b/media/$FILE" \
       "system_extracted/system/system/media/$FILE" \
-      "system_extracted/system_a/system/media/$FILE"; do
+      "system_extracted/system_a/system/media/$FILE" \
+      "system_extracted/system_b/system/media/$FILE"; do
       if [ -e "$BASE" ]; then
         copy_item "$BASE" "$SYS_OUT/media" "$FILE" "media/$FILE" && HAS_ANY=true && FOUND=true && break
       fi
@@ -629,10 +725,18 @@ if [ -n "$LIB_FILES" ]; then
       "system_extracted/lib/$FILE" \
       "system_extracted/system/lib/$FILE" \
       "system_extracted/system_a/lib/$FILE" \
+      "system_extracted/system_b/lib/$FILE" \
       "system_extracted/system/system/lib/$FILE" \
-      "system_extracted/system_a/system/lib/$FILE"; do
-      if [ -e "$BASE" ]; then
+      "system_extracted/system_a/system/lib/$FILE" \
+      "system_extracted/system_b/system/lib/$FILE" \
+      "system_extracted"; do
+      if [ -e "$BASE/$FILE" ] || ([ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]); then
+        :
+      fi
+      if [ -e "$BASE" ] && [ "$BASE" != "system_extracted" ]; then
         copy_item "$BASE" "$SYS_OUT/lib" "$FILE" "lib/$FILE" && HAS_ANY=true && FOUND=true && break
+      elif [ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]; then
+        copy_item "$BASE/$FILE" "$SYS_OUT/lib" "$FILE" "lib/$FILE" && HAS_ANY=true && FOUND=true && break
       fi
     done
     $FOUND || echo "    ❌ lib/$FILE not found"
@@ -646,9 +750,14 @@ if [ -n "$LIB64_FILES" ]; then
       "system_extracted/lib64/$FILE" \
       "system_extracted/system/lib64/$FILE" \
       "system_extracted/system_a/lib64/$FILE" \
+      "system_extracted/system_b/lib64/$FILE" \
       "system_extracted/system/system/lib64/$FILE" \
-      "system_extracted/system_a/system/lib64/$FILE"; do
-      if [ -e "$BASE" ]; then
+      "system_extracted/system_a/system/lib64/$FILE" \
+      "system_extracted/system_b/system/lib64/$FILE" \
+      "system_extracted"; do
+      if [ "$BASE" = "system_extracted" ] && [ -e "$BASE/$FILE" ]; then
+        copy_item "$BASE/$FILE" "$SYS_OUT/lib64" "$FILE" "lib64/$FILE" && HAS_ANY=true && FOUND=true && break
+      elif [ -e "$BASE" ]; then
         copy_item "$BASE" "$SYS_OUT/lib64" "$FILE" "lib64/$FILE" && HAS_ANY=true && FOUND=true && break
       fi
     done
@@ -663,9 +772,14 @@ if [ -n "$FRAMEWORK_JARS" ]; then
       "system_extracted/framework/$JAR" \
       "system_extracted/system/framework/$JAR" \
       "system_extracted/system_a/framework/$JAR" \
+      "system_extracted/system_b/framework/$JAR" \
       "system_extracted/system/system/framework/$JAR" \
-      "system_extracted/system_a/system/framework/$JAR"; do
-      if [ -e "$BASE" ]; then
+      "system_extracted/system_a/system/framework/$JAR" \
+      "system_extracted/system_b/system/framework/$JAR" \
+      "system_extracted"; do
+      if [ "$BASE" = "system_extracted" ] && [ -e "$BASE/$JAR" ]; then
+        copy_item "$BASE/$JAR" "$SYS_OUT/framework" "$JAR" "framework/$JAR" && HAS_ANY=true && FOUND=true && break
+      elif [ -e "$BASE" ]; then
         copy_item "$BASE" "$SYS_OUT/framework" "$JAR" "framework/$JAR" && HAS_ANY=true && FOUND=true && break
       fi
     done
