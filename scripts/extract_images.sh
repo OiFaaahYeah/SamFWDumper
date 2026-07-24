@@ -46,6 +46,42 @@ for PART in $SELECTED_PARTITIONS; do
   done
 done
 
+detect_fs_type() {
+  local IMG="$1"
+  local FS_TYPE=""
+  FS_TYPE=$(blkid -o value -s TYPE "$IMG" 2>/dev/null)
+  if [ -z "$FS_TYPE" ]; then
+    local FILE_OUTPUT=$(file "$IMG" 2>/dev/null)
+    if echo "$FILE_OUTPUT" | grep -qi "f2fs"; then
+      FS_TYPE="f2fs"
+    elif echo "$FILE_OUTPUT" | grep -qi "erofs"; then
+      FS_TYPE="erofs"
+    elif echo "$FILE_OUTPUT" | grep -qi "ext4\|ext3\|ext2"; then
+      FS_TYPE="ext4"
+    elif echo "$FILE_OUTPUT" | grep -qi "android sparse"; then
+      FS_TYPE="sparse"
+    fi
+  fi
+  if [ -z "$FS_TYPE" ]; then
+    local MAGIC=$(xxd -l 4 -p "$IMG" 2>/dev/null)
+    case "$MAGIC" in
+      1020f5f2) FS_TYPE="f2fs" ;;
+      e2e1f5e0) FS_TYPE="erofs" ;;
+      53ef*)    FS_TYPE="ext4" ;;
+      3aff*)    FS_TYPE="sparse" ;;
+    esac
+  fi
+  echo "$FS_TYPE"
+}
+
+is_selected() {
+  local name="$1"
+  for P in $SELECTED_PARTITIONS; do
+    [ "$P" = "$name" ] && return 0
+  done
+  return 1
+}
+
 echo ""; echo "[1/5] Downloading..."
 wget --no-check-certificate --content-disposition "$URL" 2>&1 | tail -3
 ZIP_FILE=$(ls -t *.zip 2>/dev/null | head -1)
@@ -79,10 +115,21 @@ done
 $NEED_SUPER && EXTRACT_ARGS+=("*super.img*")
 
 tar --no-anchored --wildcards -xf "$AP_FILE" "${EXTRACT_ARGS[@]}" 2>/dev/null || tar -xf "$AP_FILE" >/dev/null 2>&1
+
+echo ""
 echo "  Contents:"
+echo "  ┌─────────────────────────────────────────────┐"
+
 for file in *.img *.img.lz4; do
-  [ -f "$file" ] && echo "    $file"
+  [ -f "$file" ] || continue
+  BASE=$(echo "$file" | sed 's/\.lz4$//' | sed 's/\.img$//' | sed 's/-verified//')
+  MARK=" "
+  is_selected "$BASE" && MARK="✓"
+  printf "  │ %-40s %s\n" "$file" "$MARK"
 done
+
+echo "  └─────────────────────────────────────────────┘"
+
 rm -f "$AP_FILE"
 echo "✅ Done"
 
@@ -104,26 +151,29 @@ for PART in $SELECTED_PARTITIONS; do
     BASENAME=$(basename "$FILE")
     if xz $XZ_FLAGS -T0 "$FILE" 2>/dev/null; then
       mv "${FILE}.xz" "processed/${BASENAME}.xz"
-      echo "    $BASENAME.xz"
     else
       cp "$FILE" "processed/${BASENAME}"
-      echo "    $BASENAME"
     fi
   fi
 done
 
 SUPER_FILE=$(find . -maxdepth 1 -name "super.img*" | head -n 1)
 if $NEED_SUPER && [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
-  echo ""; echo "  Extracting super.img..."
-  
+  echo ""; echo "  Processing super.img..."
+  echo "    Found: $(basename "$SUPER_FILE")"
+
   if [[ "$SUPER_FILE" == *.lz4 ]]; then
     echo "    Decompressing LZ4..."
     lz4 -d "$SUPER_FILE" "super.img" 2>/dev/null || { echo "    ❌ LZ4 failed"; exit 1; }
     SUPER_FILE="super.img"
+    echo "    ✅ Decompressed"
   fi
-  
-  if file "$SUPER_FILE" 2>/dev/null | grep -q "sparse"; then
-    echo "    Converting sparse image..."
+
+  SUPER_FS=$(detect_fs_type "$SUPER_FILE")
+  echo "    Super format: $SUPER_FS"
+
+  if [ "$SUPER_FS" = "sparse" ]; then
+    echo "    Converting sparse to raw..."
     if command -v simg2img &>/dev/null; then
       simg2img "$SUPER_FILE" "super.raw.img" 2>/dev/null
     elif [ -f "tools/android-tools/simg2img" ]; then
@@ -133,18 +183,39 @@ if $NEED_SUPER && [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
       exit 1
     fi
     [ -f "super.raw.img" ] && SUPER_FILE="super.raw.img"
+    echo "    ✅ Converted"
   fi
-  
-  echo "    Contents:"
+
+  echo "    Unpacking partitions..."
   mkdir -p super_dump
-  
+
   if [ -f "tools/android-tools/lpunpack" ]; then
     tools/android-tools/lpunpack "$SUPER_FILE" super_dump >/dev/null 2>&1 || { echo "      ❌ lpunpack failed"; exit 1; }
   else
     echo "      ❌ lpunpack not found"
     exit 1
   fi
-  
+
+  echo ""
+  echo "    Partitions detected:"
+  echo "    ┌─────────────────────────────────────────────┐"
+
+  for img in super_dump/*.img; do
+    [ -f "$img" ] || continue
+    PART_NAME=$(basename "$img" .img)
+    BASE_NAME="${PART_NAME%_a}"
+    BASE_NAME="${BASE_NAME%_b}"
+    PART_FS=$(detect_fs_type "$img")
+    PART_SIZE=$(numfmt --to=iec $(stat -c%s "$img") 2>/dev/null || echo "?")
+
+    MARK=" "
+    is_selected "$BASE_NAME" && MARK="✓"
+
+    printf "    │ %-15s → %-6s (%s)   %s\n" "$PART_NAME" "$PART_FS" "$PART_SIZE" "$MARK"
+  done
+
+  echo "    └─────────────────────────────────────────────┘"
+
   for PART in $SELECTED_PARTITIONS; do
     for SUFFIX in "_a" "" "_b"; do
       IMG_FILE="super_dump/${PART}${SUFFIX}.img"
@@ -152,16 +223,14 @@ if $NEED_SUPER && [ -n "$SUPER_FILE" ] && [ -f "$SUPER_FILE" ]; then
         BASENAME="${PART}${SUFFIX}.img"
         if xz $XZ_FLAGS -T0 "$IMG_FILE" 2>/dev/null; then
           mv "${IMG_FILE}.xz" "processed/${BASENAME}.xz"
-          echo "    ${BASENAME}.xz"
         else
           cp "$IMG_FILE" "processed/${BASENAME}"
-          echo "    $BASENAME"
         fi
         break
       fi
     done
   done
-  
+
   rm -rf super_dump super.img super.raw.img
 elif $NEED_SUPER; then
   echo "  ⚠️ super.img not found"
