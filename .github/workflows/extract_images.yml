@@ -120,7 +120,7 @@ jobs:
       - name: Make tools executable
         run: chmod +x tools/android-tools/* tools/erofs-utils/* upload_gofile.sh scripts/extract_images.sh
 
-      - name: Run SReStocker
+      - name: Run SamFWDumper
         run: |
           PARTITIONS=""
           ${{ github.event.inputs.extract_system }} && PARTITIONS="$PARTITIONS system"
